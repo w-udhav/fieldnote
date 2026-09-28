@@ -4,7 +4,7 @@ import {
   queryBriefs,
   updateNotionWriter,
 } from "../lib/notion"
-import { parseModelJson, WRITER_SYSTEM, writerPrompt } from "../lib/writer"
+import { requestWriterDraft, writerPrompt, writerSystem } from "../lib/writer"
 import type { NotionBrief } from "../lib/types"
 
 const sleepMs = Number(process.env.WORKER_INTERVAL_MS || 120000)
@@ -16,37 +16,19 @@ function required(name: string) {
 }
 
 async function writeDraft(brief: NotionBrief, description: string) {
-  const host = (process.env.OLLAMA_HOST || "http://127.0.0.1:11434").replace(/\/$/, "")
-  const model = required("OLLAMA_MODEL")
-  const response = await fetch(`${host}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      format: "json",
-      messages: [
-        { role: "system", content: WRITER_SYSTEM },
-        {
-          role: "user",
-          content: writerPrompt({
-            title: brief.title,
-            company: brief.company,
-            authorName: brief.authorName,
-            url: brief.finalUrl ?? "",
-            description,
-          }),
-        },
-      ],
+  return requestWriterDraft({
+    system: writerSystem({
+      name: process.env.SENDER_NAME || "",
+      email: process.env.SENDER_EMAIL || process.env.SMTP_FROM || "",
     }),
-    signal: AbortSignal.timeout(120000),
+    user: writerPrompt({
+      title: brief.title,
+      company: brief.company,
+      authorName: brief.authorName,
+      url: brief.finalUrl ?? "",
+      description,
+    }),
   })
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(text.slice(0, 280) || `Ollama returned ${response.status}.`)
-  }
-  const json = (await response.json()) as { message?: { content?: string } }
-  return parseModelJson(json.message?.content ?? "")
 }
 
 async function tick() {
@@ -72,8 +54,9 @@ async function tick() {
         workflow: "Ready",
         subject: draft.subject,
         body: draft.body,
+        company: draft.company,
       })
-      console.log(`Ready: ${draft.subject}`)
+      console.log(`Ready: ${draft.subject}${draft.company ? ` (${draft.company})` : ""}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Writer failed."
       console.error(message)

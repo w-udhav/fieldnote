@@ -66,6 +66,7 @@ For the dashboard and AI workflow, add these properties (exact names):
 | --- | --- | --- |
 | Record ID | Text | Fieldnote on intake |
 | Workflow | Select or Status | Fieldnote (`Queued`), your LLM (`Ready`), Fieldnote on send (`Sent`) |
+| Company | Text | Intake, then the LLM worker when the job text names one |
 | AI Subject | Text | Your LLM worker |
 | AI Body | Text | Your LLM worker |
 | Draft To | Email | Fieldnote / you |
@@ -76,15 +77,11 @@ For the dashboard and AI workflow, add these properties (exact names):
 
 The page body always contains the source link, contact lines, template draft, and description.
 
-### Remote LLM worker (your GPU server)
+### LLM worker
 
-Fieldnote does not call your model. Run a cron or loop on the machine where Ollama/vLLM lives:
+Fieldnote does not call the model from the website. On the same machine, `npm run worker` polls Notion for rows whose Workflow is `Queued` and whose AI Body is empty. It calls the llama.cpp server at `LLM_BASE_URL` (default `http://127.0.0.1:8080`), then writes **AI Subject**, **AI Body**, **Company** when the job text names one, and sets Workflow to `Ready`.
 
-1. Query the Notion database for rows where **Workflow** is `Queued` and **AI Body** is empty.
-2. Read title, company, author, URL, and description from the row.
-3. Call your local LLM and write **AI Subject**, **AI Body**, then set **Workflow** to `Ready`.
-
-Use the same Notion integration token and database ID as in Fieldnote Settings.
+Use the same Notion integration token and database ID as in Fieldnote Settings. Set `SENDER_NAME` so the email signs off with that name. Leave `llama-server` running; the worker only needs HTTP on localhost.
 
 ## Gmail send and resume
 
@@ -119,10 +116,20 @@ Mail still uses a Gmail app password in Settings. That password is not the desk 
 
 ## AI writer
 
-`npm run worker` polls Notion for rows whose Workflow is `Queued` and whose AI Body is empty. It calls Ollama on `OLLAMA_HOST` (default `http://127.0.0.1:11434`) with `OLLAMA_MODEL`, then writes `AI Subject`, `AI Body`, and sets Workflow to `Ready`.
+Run the site and the worker on the GPU host, next to `llama-server`:
+
+```bash
+npm install
+npm start
+npm run worker
+```
+
+`npm start` serves the UI on port 43123. `npm run worker` is a separate Node loop. It reads `LLM_BASE_URL` (default `http://127.0.0.1:8080`) and posts to `/v1/chat/completions`. Optional `LLM_MODEL` is sent when set. The model reply is JSON with `subject`, `body`, and `company`.
+
+Opening a **Ready** row copies that subject, body, and company onto the local brief, so the editor is the mail you send.
 
 The Workflow select needs options named `Queued`, `AI pending`, `Ready`, `AI failed`, and `Sent`.
 
 ## Before you put this on the internet
 
-Set `FIELDNOTE_PASSWORD`. Local files do not persist on a serverless host. Use Notion as the record when you deploy.
+Set `FIELDNOTE_PASSWORD`. Any host other than localhost asks for it. Publish only the UI port. Leave `llama-server` on localhost.

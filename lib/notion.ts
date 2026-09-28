@@ -399,7 +399,7 @@ export async function updateNotionWriter(
   token: string,
   pageId: string,
   schema: Record<string, unknown>,
-  meta: { workflow: string; subject?: string; body?: string }
+  meta: { workflow: string; subject?: string; body?: string; company?: string }
 ) {
   const properties = propertiesOf(schema)
   const payload: Record<string, unknown> = {}
@@ -422,6 +422,16 @@ export async function updateNotionWriter(
       throw new Error("Add an AI Body rich text property in Notion.")
     }
     payload[bodyProp.name] = rich(meta.body)
+  }
+  const company = meta.company?.trim()
+  if (company) {
+    const companyProp = findProperty(properties, ["company", "organization", "org"])
+    if (companyProp?.type === "rich_text") payload[companyProp.name] = rich(company)
+    if (companyProp?.type === "title") {
+      payload[companyProp.name] = {
+        title: [{ type: "text", text: { content: company.slice(0, 1900) } }],
+      }
+    }
   }
   if (workflowProp && !payload[workflowProp.name]) {
     throw new Error(`Add a Workflow option named ${meta.workflow}.`)

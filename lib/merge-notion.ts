@@ -13,12 +13,15 @@ export async function loadNotionForRecord(record: BriefRecord): Promise<NotionBr
 }
 
 export function applyNotionDraft(record: BriefRecord, notion: NotionBrief | null): BriefRecord {
-  if (!notion || record.draftEdited) return record
-  const draft = draftFromNotionBrief(notion, record.draft)
+  if (!notion) return record
+  const company = notion.company.trim()
+  const withCompany = company && company !== record.company ? { ...record, company } : record
+  if (withCompany.draftEdited) return withCompany
+  const draft = draftFromNotionBrief(notion, withCompany.draft)
   const same =
-    draft.to === record.draft.to &&
-    draft.subject === record.draft.subject &&
-    draft.body === record.draft.body
-  if (same) return record
-  return { ...record, draft }
+    draft.to === withCompany.draft.to &&
+    draft.subject === withCompany.draft.subject &&
+    draft.body === withCompany.draft.body
+  if (same) return withCompany
+  return { ...withCompany, draft }
 }

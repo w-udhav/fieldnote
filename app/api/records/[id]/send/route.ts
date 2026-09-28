@@ -45,7 +45,7 @@ export async function POST(
     const messageId = await sendMail(settings, draft, { attachments })
     const sentAt = new Date().toISOString()
     const sent = {
-      ...existing,
+      ...withNotionDraft,
       draft,
       draftEdited: true,
       status: "sent" as const,
@@ -71,7 +71,7 @@ export async function POST(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Mail could not be sent."
     const saved = await saveRecord({
-      ...existing,
+      ...withNotionDraft,
       draft,
       draftEdited: true,
       status: "send_failed",
