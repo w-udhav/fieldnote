@@ -55,7 +55,7 @@ export function buildDraft(
     }
   }
 
-  const roles = roleLines(brief.description).slice(0, 8)
+  const roles = roleLines(brief.description).slice(0, 16)
   const subject = clip(
     brief.title ? `Regarding your post: ${brief.title}` : "Following up on your LinkedIn post",
     120
