@@ -64,6 +64,7 @@ export async function fileParsedBrief(brief: ParsedBrief) {
     draft,
     draftEdited: existing?.draftEdited ?? false,
     sentAt: existing?.sentAt ?? null,
+    sentMessageId: existing?.sentMessageId ?? null,
     sendError: existing?.sendError ?? null,
     destinations: existing?.destinations ?? {
       local: { status: "filed" },

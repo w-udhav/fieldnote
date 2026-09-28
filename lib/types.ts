@@ -15,11 +15,34 @@ export type DestinationResult = {
   pageId?: string
 }
 
+export type NotionBrief = {
+  pageId: string
+  recordId: string | null
+  notionUrl: string | null
+  title: string
+  company: string
+  authorName: string
+  publishedAt: string | null
+  workflow: string | null
+  status: string | null
+  kind: string | null
+  finalUrl: string | null
+  draftTo: string | null
+  aiSubject: string | null
+  aiBody: string | null
+  sentMessageId: string | null
+  lastReplyAt: string | null
+  lastReplySnippet: string | null
+  hasUnreadReply: boolean
+  updatedAt: string
+}
+
 export type BriefRecord = {
   id: string
   createdAt: string
   updatedAt: string
   status: "filed" | "sent" | "send_failed"
+  sentMessageId: string | null
   sourceUrl: string
   finalUrl: string
   kind: BriefKind
@@ -54,6 +77,7 @@ export type ParsedBrief = Omit<
   | "draft"
   | "draftEdited"
   | "sentAt"
+  | "sentMessageId"
   | "sendError"
   | "destinations"
 >
@@ -66,6 +90,10 @@ export type Settings = {
   smtpSecure: boolean
   smtpUser: string
   smtpPass: string
+  imapHost: string
+  imapPort: number
+  imapSecure: boolean
+  resumePath: string
   notionToken: string
   notionDatabaseId: string
   sheetsWebhookUrl: string
@@ -79,6 +107,12 @@ export type PublicSettings = {
   smtpSecure: boolean
   smtpUser: string
   smtpConfigured: boolean
+  imapHost: string
+  imapPort: number
+  imapSecure: boolean
+  imapConfigured: boolean
+  resumePath: string
+  resumeConfigured: boolean
   notionDatabaseId: string
   notionConfigured: boolean
   sheetsWebhookUrl: string

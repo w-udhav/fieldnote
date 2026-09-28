@@ -6,7 +6,7 @@ import { cn } from "cn"
 
 const links = [
   { href: "/", label: "Intake" },
-  { href: "/pipeline", label: "Pipeline" },
+  { href: "/pipeline", label: "Dashboard" },
   { href: "/settings", label: "Settings" },
 ]
 

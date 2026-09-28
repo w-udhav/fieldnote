@@ -9,7 +9,7 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(request: Request) {
-  const denied = requireAuth(request)
+  const denied = await requireAuth(request)
   if (denied) return denied
   const body = (await request.json()) as { target?: string }
   const settings = await loadSettings()

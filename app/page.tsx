@@ -1,5 +1,5 @@
-import { IntakeDesk } from "@/components/intake-desk"
+import { redirect } from "next/navigation"
 
 export default function HomePage() {
-  return <IntakeDesk />
+  redirect("/pipeline")
 }

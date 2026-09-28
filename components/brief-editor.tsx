@@ -5,7 +5,7 @@ import { Loader2Icon } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "cn"
 import { ApiError, api } from "@/lib/client"
-import type { BriefRecord, EmailDraft, PublicSettings } from "@/lib/types"
+import type { BriefRecord, EmailDraft, NotionBrief, PublicSettings } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,9 +28,11 @@ function destinationLabel(status: BriefRecord["destinations"]["notion"]["status"
 
 export function BriefEditor({
   record,
+  notion,
   onChange,
 }: {
   record: BriefRecord
+  notion?: NotionBrief | null
   onChange: (record: BriefRecord) => void
 }) {
   const [draft, setDraft] = useState<EmailDraft>(record.draft)
@@ -87,15 +89,18 @@ export function BriefEditor({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-      <Card>
+      <Card className="border-border/60 bg-card/40 shadow-none">
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{record.kind === "job" ? "Job" : record.kind === "post" ? "Post" : "Page"}</Badge>
             <Badge variant={record.status === "sent" ? "default" : record.status === "send_failed" ? "destructive" : "outline"}>
               {record.status === "send_failed" ? "Send failed" : record.status === "sent" ? "Sent" : "Filed"}
             </Badge>
+            {notion?.workflow ? (
+              <Badge variant="secondary">Workflow: {notion.workflow}</Badge>
+            ) : null}
           </div>
-          <CardTitle className="font-heading text-2xl leading-tight">{record.title}</CardTitle>
+          <CardTitle className="text-lg font-semibold leading-tight">{record.title}</CardTitle>
           <p className="text-sm text-muted-foreground">
             {[record.company, record.location, record.employmentType].filter(Boolean).join(" · ") || "No company or location on the public page."}
           </p>
@@ -180,9 +185,9 @@ export function BriefEditor({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="border-border/60 bg-card/40 shadow-none">
         <CardHeader>
-          <CardTitle className="font-heading text-2xl">Mail draft</CardTitle>
+          <CardTitle className="text-lg font-semibold">Mail draft</CardTitle>
           <p className="text-sm text-muted-foreground">
             Nothing is sent until you press Send. Edit the note first.
           </p>
@@ -222,6 +227,15 @@ export function BriefEditor({
           {record.sentAt ? (
             <p className="text-sm text-muted-foreground">Sent {formatWhen(record.sentAt)}.</p>
           ) : null}
+          {notion?.lastReplySnippet ? (
+            <div className="rounded-lg bg-muted/70 p-3 text-sm">
+              <p className="font-medium">
+                Latest reply {notion.hasUnreadReply ? "(unread)" : ""}{" "}
+                {notion.lastReplyAt ? formatWhen(notion.lastReplyAt) : ""}
+              </p>
+              <p className="mt-1 leading-6 text-muted-foreground">{notion.lastReplySnippet}</p>
+            </div>
+          ) : null}
         </CardContent>
         <CardFooter className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
           <Button type="button" variant="outline" onClick={() => void saveDraft()} disabled={saving || sending}>
@@ -241,7 +255,15 @@ export function BriefEditor({
             <p className="w-full text-sm text-muted-foreground sm:order-last">
               Connect SMTP in Settings to send from here. Open in mail app still works.
             </p>
-          ) : null}
+          ) : settings?.resumeConfigured ? (
+            <p className="w-full text-sm text-muted-foreground sm:order-last">
+              Your uploaded resume PDF will be attached when you press Send.
+            </p>
+          ) : (
+            <p className="w-full text-sm text-muted-foreground sm:order-last">
+              Upload a resume PDF in Settings to attach it on Send.
+            </p>
+          )}
         </CardFooter>
       </Card>
     </div>

@@ -1,11 +1,14 @@
+import { access } from "node:fs/promises"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { PublicSettings, Settings } from "./types"
 
 const FILE = path.join(process.cwd(), "data", "settings.json")
+const DEFAULT_RESUME = path.join("data", "resume.pdf")
 
 function fromEnv(): Settings {
   const port = Number(process.env.SMTP_PORT || 587)
+  const imapPort = Number(process.env.IMAP_PORT || 993)
   return {
     senderName: process.env.SENDER_NAME || "",
     senderEmail: process.env.SMTP_FROM || process.env.SENDER_EMAIL || "",
@@ -14,6 +17,10 @@ function fromEnv(): Settings {
     smtpSecure: process.env.SMTP_SECURE === "true" || process.env.SMTP_PORT === "465",
     smtpUser: process.env.SMTP_USER || "",
     smtpPass: process.env.SMTP_PASS || "",
+    imapHost: process.env.IMAP_HOST || "imap.gmail.com",
+    imapPort: Number.isFinite(imapPort) ? imapPort : 993,
+    imapSecure: process.env.IMAP_SECURE !== "false",
+    resumePath: process.env.RESUME_PATH || DEFAULT_RESUME,
     notionToken: process.env.NOTION_TOKEN || "",
     notionDatabaseId: process.env.NOTION_DATABASE_ID || "",
     sheetsWebhookUrl: process.env.SHEETS_WEBHOOK_URL || "",
@@ -34,6 +41,15 @@ function overlay(base: Settings, patch: Partial<Settings>): Settings {
     }
     if (key === "smtpSecure") {
       next.smtpSecure = Boolean(value)
+      continue
+    }
+    if (key === "imapPort") {
+      const port = Number(value)
+      if (Number.isFinite(port) && port > 0) next.imapPort = port
+      continue
+    }
+    if (key === "imapSecure") {
+      next.imapSecure = Boolean(value)
       continue
     }
     if (typeof value === "string") {
@@ -62,7 +78,26 @@ export async function saveSettings(patch: Partial<Settings>) {
   return next
 }
 
-export function toPublic(settings: Settings): PublicSettings {
+async function resumeExists(resumePath: string) {
+  const resolved = path.isAbsolute(resumePath)
+    ? resumePath
+    : path.join(process.cwd(), "data", path.basename(resumePath))
+  try {
+    await access(resolved)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function resolveResumePath(settings: Settings) {
+  if (path.isAbsolute(settings.resumePath)) return settings.resumePath
+  const base = path.join(process.cwd(), "data")
+  const name = path.basename(settings.resumePath)
+  return path.join(base, name)
+}
+
+export async function toPublic(settings: Settings): Promise<PublicSettings> {
   return {
     senderName: settings.senderName,
     senderEmail: settings.senderEmail,
@@ -71,11 +106,17 @@ export function toPublic(settings: Settings): PublicSettings {
     smtpSecure: settings.smtpSecure,
     smtpUser: settings.smtpUser,
     smtpConfigured: Boolean(settings.smtpHost && settings.senderEmail),
+    imapHost: settings.imapHost,
+    imapPort: settings.imapPort,
+    imapSecure: settings.imapSecure,
+    imapConfigured: Boolean(settings.imapHost && settings.smtpUser && settings.smtpPass),
+    resumePath: settings.resumePath,
+    resumeConfigured: await resumeExists(settings.resumePath),
     notionDatabaseId: settings.notionDatabaseId,
     notionConfigured: Boolean(settings.notionToken && settings.notionDatabaseId),
     sheetsWebhookUrl: settings.sheetsWebhookUrl,
     sheetsConfigured: Boolean(settings.sheetsWebhookUrl),
-    lockRequired: Boolean(process.env.FIELDNOTE_KEY) || false,
+    lockRequired: Boolean(process.env.FIELDNOTE_PASSWORD?.trim()),
   }
 }
 

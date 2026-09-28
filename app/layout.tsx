@@ -1,16 +1,12 @@
 import type { Metadata } from "next"
-import { Fraunces, Geist_Mono, Source_Sans_3 } from "next/font/google"
+import { Geist_Mono, Inter } from "next/font/google"
 import { AppShell } from "@/components/app-shell"
 import { Toaster } from "@/components/ui/sonner"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "./globals.css"
 
-const sourceSans = Source_Sans_3({
+const inter = Inter({
   variable: "--font-source",
-  subsets: ["latin"],
-})
-
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
   subsets: ["latin"],
 })
 
@@ -28,11 +24,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${sourceSans.variable} ${fraunces.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-background text-foreground">
-        <AppShell>{children}</AppShell>
-        <Toaster />
+      <body className="min-h-svh bg-background text-foreground">
+        <TooltipProvider>
+          <AppShell>{children}</AppShell>
+          <Toaster />
+        </TooltipProvider>
       </body>
     </html>
   )

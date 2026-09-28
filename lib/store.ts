@@ -19,7 +19,11 @@ async function readAll(): Promise<BriefRecord[]> {
   try {
     const raw = await readFile(FILE, "utf8")
     const parsed = JSON.parse(raw) as BriefRecord[]
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.map((record) => ({
+      ...record,
+      sentMessageId: record.sentMessageId ?? null,
+    }))
   } catch {
     return []
   }

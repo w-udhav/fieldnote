@@ -18,7 +18,9 @@ npm test
 npm run lint
 ```
 
-The local pipeline is stored in `data/records.json`. Settings, including mail and Notion secrets, are stored in `data/settings.json`. Both files stay on this machine.
+The local cache is stored in `data/records.json`. Settings, including mail and Notion secrets, are stored in `data/settings.json`. Upload a resume to `data/resume.pdf`. All of these stay on this machine.
+
+The **Dashboard** reads from Notion when connected. Intake still writes a local copy so Send and dedupe work offline of Notion reads.
 
 ## What a run does
 
@@ -58,7 +60,45 @@ You can also put the same values in the environment. See `env.example`. Values s
 
 The database needs a title property. These names are filled when they exist: Email, Phone, URL, Company, Location, Author, Status (Filed / Sent), Kind.
 
-The page body always contains the source link, contact lines, draft, and description.
+For the dashboard and AI workflow, add these properties (exact names):
+
+| Property | Type | Set by |
+| --- | --- | --- |
+| Record ID | Text | Fieldnote on intake |
+| Workflow | Select or Status | Fieldnote (`Queued`), your LLM (`Ready`), Fieldnote on send (`Sent`) |
+| AI Subject | Text | Your LLM worker |
+| AI Body | Text | Your LLM worker |
+| Draft To | Email | Fieldnote / you |
+| Sent Message ID | Text | Fieldnote after send |
+| Last Reply At | Date | Fieldnote IMAP sync |
+| Last Reply Snippet | Text | Fieldnote IMAP sync |
+| Has Unread Reply | Checkbox | Fieldnote IMAP sync |
+
+The page body always contains the source link, contact lines, template draft, and description.
+
+### Remote LLM worker (your GPU server)
+
+Fieldnote does not call your model. Run a cron or loop on the machine where Ollama/vLLM lives:
+
+1. Query the Notion database for rows where **Workflow** is `Queued` and **AI Body** is empty.
+2. Read title, company, author, URL, and description from the row.
+3. Call your local LLM and write **AI Subject**, **AI Body**, then set **Workflow** to `Ready`.
+
+Use the same Notion integration token and database ID as in Fieldnote Settings.
+
+## Gmail send and resume
+
+In **Settings → Mail**, configure Gmail SMTP with an app password (`smtp.gmail.com`, port `587`, implicit TLS off).
+
+Upload a **resume PDF** in Settings. **Send mail** on a brief attaches it when the file is present.
+
+When **Workflow** is `Ready` and AI fields are filled, the brief editor prefills from Notion before you send.
+
+## Reply snippets (IMAP)
+
+**Settings → Inbox (IMAP)** defaults to Gmail (`imap.gmail.com`, port `993`). It reuses the same username and app password as SMTP.
+
+On the **Dashboard**, **Refresh replies** scans the inbox for messages that reply to a sent **Message-ID** and updates the Notion row with a short snippet and unread flag.
 
 ## Connect a Google Sheet
 
@@ -71,8 +111,18 @@ The script writes a `Briefs` tab. A later send updates the row with the same `re
 
 Only `script.google.com` and `googleusercontent.com` webhook URLs are accepted.
 
+## Sign in
+
+On localhost the desk is open until `FIELDNOTE_PASSWORD` is set. Any other host, including `llm-server.local`, asks for that password. It is stored as an httpOnly cookie in the browser.
+
+Mail still uses a Gmail app password in Settings. That password is not the desk login.
+
+## AI writer
+
+`npm run worker` polls Notion for rows whose Workflow is `Queued` and whose AI Body is empty. It calls Ollama on `OLLAMA_HOST` (default `http://127.0.0.1:11434`) with `OLLAMA_MODEL`, then writes `AI Subject`, `AI Body`, and sets Workflow to `Ready`.
+
+The Workflow select needs options named `Queued`, `AI pending`, `Ready`, `AI failed`, and `Sent`.
+
 ## Before you put this on the internet
 
-On localhost the desk is open. Anywhere else it refuses requests until `FIELDNOTE_KEY` is set. Enter that key once in the browser tab. Without the lock, anyone who could open the site could send mail with the saved SMTP login.
-
-Local files do not persist on a serverless host. Use Notion or the sheet as the record when you deploy.
+Set `FIELDNOTE_PASSWORD`. Local files do not persist on a serverless host. Use Notion as the record when you deploy.

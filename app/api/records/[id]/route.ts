@@ -1,4 +1,5 @@
 import { requireAuth } from "@/lib/guard"
+import { applyNotionDraft, loadNotionForRecord } from "@/lib/merge-notion"
 import { getRecord, removeRecord, saveRecord } from "@/lib/store"
 import type { EmailDraft } from "@/lib/types"
 
@@ -18,16 +19,18 @@ function cleanDraft(draft: DraftPatch, current: EmailDraft): EmailDraft {
 type Context = { params: Promise<{ id: string }> }
 
 export async function GET(request: Request, context: Context) {
-  const denied = requireAuth(request)
+  const denied = await requireAuth(request)
   if (denied) return denied
   const { id } = await context.params
   const record = await getRecord(id)
   if (!record) return Response.json({ error: "That brief is not in the pipeline." }, { status: 404 })
-  return Response.json({ record })
+  const notion = await loadNotionForRecord(record)
+  const merged = applyNotionDraft(record, notion)
+  return Response.json({ record: merged, notion })
 }
 
 export async function PATCH(request: Request, context: Context) {
-  const denied = requireAuth(request)
+  const denied = await requireAuth(request)
   if (denied) return denied
   const { id } = await context.params
   const record = await getRecord(id)
@@ -45,7 +48,7 @@ export async function PATCH(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
-  const denied = requireAuth(request)
+  const denied = await requireAuth(request)
   if (denied) return denied
   const { id } = await context.params
   const removed = await removeRecord(id)
