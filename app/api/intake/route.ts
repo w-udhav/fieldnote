@@ -1,8 +1,6 @@
 import { IntakeError } from "@/lib/errors"
-import { fileParsedBrief } from "@/lib/file-brief"
 import { requireAuth } from "@/lib/guard"
-import { fetchLinkedInPage } from "@/lib/linkedin"
-import { parseLinkedInHtml } from "@/lib/parse"
+import { intakeLinkedInUrl } from "@/lib/intake"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -21,9 +19,7 @@ export async function POST(request: Request) {
   if (!url) return Response.json({ error: "Paste a LinkedIn URL." }, { status: 400 })
 
   try {
-    const page = await fetchLinkedInPage(url)
-    const brief = parseLinkedInHtml(page.html, page.finalUrl, url)
-    const filed = await fileParsedBrief(brief)
+    const filed = await intakeLinkedInUrl(url)
     return Response.json(filed)
   } catch (error) {
     if (error instanceof IntakeError) {

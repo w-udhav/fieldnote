@@ -8,7 +8,8 @@
     "start": "next start -H 0.0.0.0 -p 43123",
     "lint": "eslint",
     "test": "tsx --test lib/*.test.ts",
-    "worker": "tsx scripts/notion-llm-worker.ts"
+    "worker": "tsx scripts/notion-llm-worker.ts",
+    "telegram": "tsx scripts/telegram-intake-worker.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

@@ -52,6 +52,12 @@ build_local() {
     --target=node22 \
     --format=cjs \
     --outfile="$ROOT/.deploy/worker.js"
+  "$ROOT/node_modules/esbuild/bin/esbuild" "$ROOT/scripts/telegram-intake-worker.ts" \
+    --bundle \
+    --platform=node \
+    --target=node22 \
+    --format=cjs \
+    --outfile="$ROOT/.deploy/telegram-worker.js"
   cp -a "$ROOT/MEMORY.md" "$ROOT/.deploy/MEMORY.md"
 }
 
@@ -65,6 +71,8 @@ sync_build() {
     --exclude .fieldnote.pid \
     --exclude worker.log \
     --exclude .worker.pid \
+    --exclude telegram-worker.log \
+    --exclude .telegram-worker.pid \
     -e "ssh ${SSH_OPTS[*]}" \
     "$ROOT/.deploy/" "${HOST}:${DEST}/"
   ssh "${SSH_OPTS[@]}" "$HOST" "mkdir -p ~/${DEST}/data"
@@ -110,6 +118,18 @@ if [[ -f worker.js ]]; then
   nohup node worker.js > worker.log 2>&1 &
   echo $! > .worker.pid
   echo "Worker started (pid $(cat .worker.pid))"
+fi
+if [[ -f telegram-worker.js ]]; then
+  if [[ -f .telegram-worker.pid ]]; then
+    old="$(cat .telegram-worker.pid || true)"
+    if [[ -n "$old" ]] && kill -0 "$old" 2>/dev/null; then
+      kill "$old" || true
+      sleep 1
+    fi
+  fi
+  nohup node telegram-worker.js > telegram-worker.log 2>&1 &
+  echo $! > .telegram-worker.pid
+  echo "Telegram worker started (pid $(cat .telegram-worker.pid))"
 fi
 EOF
 }
