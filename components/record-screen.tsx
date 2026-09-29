@@ -2,16 +2,29 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 import { api } from "@/lib/client"
 import type { BriefRecord, NotionBrief } from "@/lib/types"
 import { BriefEditor } from "@/components/brief-editor"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 
+function BriefCrumb({ current }: { current: string }) {
+  return (
+    <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
+      <Link href="/pipeline" className="hover:text-foreground">
+        Fieldnote
+      </Link>
+      <span className="px-1.5">/</span>
+      <Link href="/pipeline" className="hover:text-foreground">
+        Dashboard
+      </Link>
+      <span className="px-1.5">/</span>
+      <span className="text-foreground">{current}</span>
+    </nav>
+  )
+}
+
 export function RecordScreen({ id }: { id: string }) {
-  const router = useRouter()
   const [record, setRecord] = useState<BriefRecord | null>(null)
   const [notion, setNotion] = useState<NotionBrief | null>(null)
   const [error, setError] = useState("")
@@ -30,20 +43,10 @@ export function RecordScreen({ id }: { id: string }) {
       })
   }, [id])
 
-  async function remove() {
-    if (!window.confirm("Remove this brief from the local pipeline?")) return
-    try {
-      await api(`/api/records/${id}`, { method: "DELETE" })
-      toast.success("Brief removed.")
-      router.push("/pipeline")
-    } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Could not remove the brief.")
-    }
-  }
-
   if (missing) {
     return (
       <div className="flex flex-col gap-6">
+        <BriefCrumb current="Brief missing" />
         <PageHeader title="Brief missing" description="This record is not in the local pipeline." />
         <Button nativeButton={false} variant="outline" className="w-fit" render={<Link href="/pipeline" />}>
           Back to dashboard
@@ -52,25 +55,35 @@ export function RecordScreen({ id }: { id: string }) {
     )
   }
 
-  if (error) return <p className="text-sm text-destructive">{error}</p>
-  if (!record) return <p className="text-sm text-muted-foreground">Loading brief…</p>
+  if (error) {
+    return (
+      <div className="flex flex-col gap-6">
+        <BriefCrumb current="Brief" />
+        <p className="text-sm text-destructive">{error}</p>
+      </div>
+    )
+  }
+  if (!record) {
+    return (
+      <div className="flex flex-col gap-6">
+        <BriefCrumb current="Brief" />
+        <p className="text-sm text-muted-foreground">Loading brief…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
+      <BriefCrumb current={record.title || "Brief"} />
       <PageHeader
         title={record.title || "Brief"}
         description={[record.company, notion?.workflow ? `Workflow: ${notion.workflow}` : ""]
           .filter(Boolean)
           .join(" · ")}
         actions={
-          <>
-            <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/pipeline" />}>
-              Dashboard
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => void remove()}>
-              Remove
-            </Button>
-          </>
+          <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/pipeline" />}>
+            Dashboard
+          </Button>
         }
       />
       <BriefEditor

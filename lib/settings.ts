@@ -2,6 +2,7 @@ import { access } from "node:fs/promises"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { PublicSettings, Settings } from "./types"
+import { resolveWriterSystem, writerSystem } from "./writer"
 
 const FILE = path.join(process.cwd(), "data", "settings.json")
 const DEFAULT_RESUME = path.join("data", "resume.pdf")
@@ -24,6 +25,8 @@ function fromEnv(): Settings {
     notionToken: process.env.NOTION_TOKEN || "",
     notionDatabaseId: process.env.NOTION_DATABASE_ID || "",
     sheetsWebhookUrl: process.env.SHEETS_WEBHOOK_URL || "",
+    writerSystemPrompt: "",
+    writerProfile: "",
   }
 }
 
@@ -97,7 +100,30 @@ export function resolveResumePath(settings: Settings) {
   return path.join(base, name)
 }
 
+export async function defaultWriterProfile() {
+  try {
+    return await readFile(path.join(process.cwd(), "MEMORY.md"), "utf8")
+  } catch {
+    return ""
+  }
+}
+
+export function storedPrompt(value: string | undefined, fallback: string) {
+  if (typeof value !== "string") return undefined
+  const text = value.replace(/\r\n/g, "\n").trim()
+  const base = fallback.replace(/\r\n/g, "\n").trim()
+  if (!text || text === base) return ""
+  return text
+}
+
+export async function resolveWriterProfile(settings: Pick<Settings, "writerProfile">) {
+  const custom = settings.writerProfile?.replace(/\r\n/g, "\n").trim()
+  if (custom) return custom
+  return defaultWriterProfile()
+}
+
 export async function toPublic(settings: Settings): Promise<PublicSettings> {
+  const profileDefault = await defaultWriterProfile()
   return {
     senderName: settings.senderName,
     senderEmail: settings.senderEmail,
@@ -117,6 +143,10 @@ export async function toPublic(settings: Settings): Promise<PublicSettings> {
     sheetsWebhookUrl: settings.sheetsWebhookUrl,
     sheetsConfigured: Boolean(settings.sheetsWebhookUrl),
     lockRequired: Boolean(process.env.FIELDNOTE_PASSWORD?.trim()),
+    writerSystemPrompt: resolveWriterSystem(settings.writerSystemPrompt),
+    writerProfile: settings.writerProfile.trim() || profileDefault,
+    writerSystemDefault: writerSystem(),
+    writerProfileDefault: profileDefault,
   }
 }
 

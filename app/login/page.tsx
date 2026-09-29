@@ -39,7 +39,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-svh items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-md border-border/60 bg-card/40 shadow-none">
+      <Card className="w-full max-w-md bg-card/40 shadow-none">
         <CardHeader>
           <CardTitle>Fieldnote</CardTitle>
           <CardDescription>Enter the desk password to open the dashboard.</CardDescription>

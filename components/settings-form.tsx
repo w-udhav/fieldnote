@@ -1,18 +1,35 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Loader2Icon } from "lucide-react"
+import { useEffect, useState, type CSSProperties } from "react"
+import {
+  DatabaseIcon,
+  FileTextIcon,
+  InboxIcon,
+  Loader2Icon,
+  MailIcon,
+  SheetIcon,
+  SparklesIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/client"
 import type { PublicSettings } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import {
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from "@/components/ui/sidebar"
+import { Textarea } from "@/components/ui/textarea"
 
 type FormState = PublicSettings & {
   smtpPass: string
@@ -38,9 +55,24 @@ const EMPTY: FormState = {
   sheetsWebhookUrl: "",
   sheetsConfigured: false,
   lockRequired: false,
+  writerSystemPrompt: "",
+  writerProfile: "",
+  writerSystemDefault: "",
+  writerProfileDefault: "",
   smtpPass: "",
   notionToken: "",
 }
+
+const TABS = [
+  { id: "mail", label: "Mail", icon: MailIcon },
+  { id: "resume", label: "Resume", icon: FileTextIcon },
+  { id: "inbox", label: "Inbox", icon: InboxIcon },
+  { id: "notion", label: "Notion", icon: DatabaseIcon },
+  { id: "sheet", label: "Sheet", icon: SheetIcon },
+  { id: "prompt", label: "Prompt", icon: SparklesIcon },
+] as const
+
+type TabId = (typeof TABS)[number]["id"]
 
 function Field({
   id,
@@ -61,27 +93,8 @@ function Field({
   )
 }
 
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string
-  description: string
-  children: React.ReactNode
-}) {
-  return (
-    <section className="space-y-4 border-b border-border pb-8 last:border-b-0 last:pb-2">
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium">{title}</h2>
-        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-      </div>
-      {children}
-    </section>
-  )
-}
-
 export function SettingsForm() {
+  const [tab, setTab] = useState<TabId>("mail")
   const [form, setForm] = useState<FormState>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -122,6 +135,8 @@ export function SettingsForm() {
           notionToken: form.notionToken,
           notionDatabaseId: form.notionDatabaseId,
           sheetsWebhookUrl: form.sheetsWebhookUrl,
+          writerSystemPrompt: form.writerSystemPrompt,
+          writerProfile: form.writerProfile,
         }),
       })
       setForm((current) => ({ ...current, ...data.settings, smtpPass: "", notionToken: "" }))
@@ -192,28 +207,66 @@ export function SettingsForm() {
     }
   }
 
-  return (
-    <form onSubmit={save} className="flex h-full min-h-0 flex-col">
-      <DialogHeader className="shrink-0 border-b border-border px-6 py-4 pr-12">
-        <DialogTitle className="text-lg font-semibold">Settings</DialogTitle>
-        <DialogDescription>
-          Gmail, Notion, resume, and inbox sync. Secrets stay on this machine.
-        </DialogDescription>
-      </DialogHeader>
+  const descriptions: Record<TabId, string> = {
+    mail: form.smtpConfigured
+      ? "SMTP is connected. Send on a brief delivers from this address."
+      : "Gmail: smtp.gmail.com, port 587, implicit TLS off, and an app password.",
+    resume: form.resumeConfigured ? "This PDF attaches when you press Send." : "Upload a PDF. It attaches on Send.",
+    inbox: form.imapConfigured
+      ? "Reply snippets sync from this mailbox."
+      : "Uses the same Gmail address and app password as SMTP.",
+    notion: form.notionConfigured
+      ? "New briefs are written to this database."
+      : "Share a database with your integration, then paste the token and ID.",
+    sheet: form.sheetsConfigured
+      ? "Optional copy. Sends update the row with the same record id."
+      : "Optional. Deploy integrations/google-apps-script.js as a web app.",
+    prompt: "Rewrite and the worker use this text. Saving the built-in wording keeps the default.",
+  }
+  const current = TABS.find((item) => item.id === tab) ?? TABS[0]
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
-        {loading ? <p className="text-sm text-muted-foreground">Loading settings…</p> : null}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        {!loading && !error ? (
-          <div className="flex flex-col gap-8">
-            <Section
-              title="Mail"
-              description={
-                form.smtpConfigured
-                  ? "SMTP is connected. Send on a brief delivers from this address."
-                  : "Gmail: smtp.gmail.com, port 587, implicit TLS off, and an app password."
-              }
-            >
+  return (
+    <form onSubmit={save} className="flex h-full min-h-0">
+      <SidebarProvider className="h-full min-h-0" style={{ "--sidebar-width": "13rem" } as CSSProperties}>
+        <Sidebar collapsible="none" className="h-full border-r border-sidebar-border">
+          <SidebarHeader>
+            <DialogTitle className="px-2 text-sm">Settings</DialogTitle>
+            <DialogDescription className="sr-only">
+              Mail, resume, inbox, Notion, Google Sheet, and the writer prompt. Secrets stay on this machine.
+            </DialogDescription>
+          </SidebarHeader>
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {TABS.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <SidebarMenuItem key={item.id}>
+                        <SidebarMenuButton type="button" isActive={tab === item.id} onClick={() => setTab(item.id)}>
+                          <Icon />
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset className="min-h-0 overflow-hidden bg-transparent">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="shrink-0 px-6 py-4 pr-12">
+          <h2 className="text-base font-semibold">{current.label}</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">{descriptions[tab]}</p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
+          {loading ? <p className="text-sm text-muted-foreground">Loading settings…</p> : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {!loading && !error && tab === "mail" ? (
+            <div className="flex flex-col gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field id="sender-name" label="Your name">
                   <Input id="sender-name" className="h-9" value={form.senderName} onChange={(event) => set("senderName", event.target.value)} />
@@ -238,76 +291,57 @@ export function SettingsForm() {
                   Implicit TLS (port 465)
                 </label>
               </div>
-              <Button type="button" variant="outline" size="sm" disabled={checking !== null} onClick={() => void check("smtp")}>
+              <Button type="button" variant="outline" size="sm" className="w-fit" disabled={checking !== null} onClick={() => void check("smtp")}>
                 {checking === "smtp" ? <Loader2Icon className="animate-spin" /> : null}
                 Check SMTP
               </Button>
-            </Section>
+            </div>
+          ) : null}
 
-            <Section
-              title="Resume"
-              description={
-                form.resumeConfigured
-                  ? "This PDF attaches when you press Send."
-                  : "Upload a PDF. It attaches on Send."
-              }
-            >
-              <Field id="resume-file" label="Resume PDF">
-                <Input
-                  id="resume-file"
-                  className="h-9"
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  disabled={uploadingResume}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (file) void uploadResume(file)
-                  }}
-                />
+          {!loading && !error && tab === "resume" ? (
+            <div>
+            <Field id="resume-file" label="Resume PDF">
+              <Input
+                id="resume-file"
+                className="h-9"
+                type="file"
+                accept="application/pdf,.pdf"
+                disabled={uploadingResume}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) void uploadResume(file)
+                }}
+              />
+            </Field>
+            </div>
+          ) : null}
+
+          {!loading && !error && tab === "inbox" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="imap-host" label="IMAP host">
+                <Input id="imap-host" className="h-9" value={form.imapHost} onChange={(event) => set("imapHost", event.target.value)} placeholder="imap.gmail.com" />
               </Field>
-            </Section>
+              <Field id="imap-port" label="Port">
+                <Input id="imap-port" className="h-9" type="number" value={form.imapPort} onChange={(event) => set("imapPort", Number(event.target.value))} />
+              </Field>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" checked={form.imapSecure} onChange={(event) => set("imapSecure", event.target.checked)} />
+                TLS (port 993)
+              </label>
+            </div>
+          ) : null}
 
-            <Section
-              title="Inbox"
-              description={
-                form.imapConfigured
-                  ? "Reply snippets sync from this mailbox."
-                  : "Uses the same Gmail address and app password as SMTP."
-              }
-            >
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field id="imap-host" label="IMAP host">
-                  <Input id="imap-host" className="h-9" value={form.imapHost} onChange={(event) => set("imapHost", event.target.value)} placeholder="imap.gmail.com" />
-                </Field>
-                <Field id="imap-port" label="Port">
-                  <Input id="imap-port" className="h-9" type="number" value={form.imapPort} onChange={(event) => set("imapPort", Number(event.target.value))} />
-                </Field>
-                <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                  <input type="checkbox" checked={form.imapSecure} onChange={(event) => set("imapSecure", event.target.checked)} />
-                  TLS (port 993)
-                </label>
-              </div>
-            </Section>
-
-            <Section
-              title="Notion"
-              description={
-                form.notionConfigured
-                  ? "New briefs are written to this database."
-                  : "Share a database with your integration, then paste the token and ID."
-              }
-            >
-              <div className="grid gap-4">
-                <Field id="notion-token" label="Integration token">
-                  <Input id="notion-token" className="h-9" type="password" value={form.notionToken} onChange={(event) => set("notionToken", event.target.value)} placeholder={form.notionConfigured ? "Saved. Leave blank to keep it." : "ntn_…"} autoComplete="new-password" />
-                </Field>
-                <Field id="notion-db" label="Database ID or URL">
-                  <Input id="notion-db" className="h-9" value={form.notionDatabaseId} onChange={(event) => set("notionDatabaseId", event.target.value)} />
-                </Field>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Create columns replaces the database schema with the Fieldnote columns and removes the previous ones.
-                </p>
-              </div>
+          {!loading && !error && tab === "notion" ? (
+            <div className="flex flex-col gap-4">
+              <Field id="notion-token" label="Integration token">
+                <Input id="notion-token" className="h-9" type="password" value={form.notionToken} onChange={(event) => set("notionToken", event.target.value)} placeholder={form.notionConfigured ? "Saved. Leave blank to keep it." : "ntn_…"} autoComplete="new-password" />
+              </Field>
+              <Field id="notion-db" label="Database ID or URL">
+                <Input id="notion-db" className="h-9" value={form.notionDatabaseId} onChange={(event) => set("notionDatabaseId", event.target.value)} />
+              </Field>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Create columns replaces the database schema with the Fieldnote columns and removes the previous ones.
+              </p>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" disabled={checking !== null} onClick={() => void check("notion")}>
                   {checking === "notion" ? <Loader2Icon className="animate-spin" /> : null}
@@ -318,35 +352,65 @@ export function SettingsForm() {
                   Create columns
                 </Button>
               </div>
-            </Section>
+            </div>
+          ) : null}
 
-            <Section
-              title="Google Sheet"
-              description={
-                form.sheetsConfigured
-                  ? "Optional copy. Sends update the row with the same record id."
-                  : "Optional. Deploy integrations/google-apps-script.js as a web app."
-              }
-            >
+          {!loading && !error && tab === "sheet" ? (
+            <div className="flex flex-col gap-4">
               <Field id="sheet-url" label="Apps Script web app URL">
                 <Input id="sheet-url" className="h-9" value={form.sheetsWebhookUrl} onChange={(event) => set("sheetsWebhookUrl", event.target.value)} placeholder="https://script.google.com/macros/s/…/exec" />
               </Field>
-              <Button type="button" variant="outline" size="sm" disabled={checking !== null} onClick={() => void check("sheets")}>
+              <Button type="button" variant="outline" size="sm" className="w-fit" disabled={checking !== null} onClick={() => void check("sheets")}>
                 {checking === "sheets" ? <Loader2Icon className="animate-spin" /> : null}
                 Check sheet
               </Button>
-            </Section>
-          </div>
-        ) : null}
-      </div>
+            </div>
+          ) : null}
 
-      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-muted/30 px-6 py-3">
-        <p className="text-xs text-muted-foreground">Passwords stay on this machine.</p>
-        <Button type="submit" disabled={saving || loading || Boolean(error)}>
-          {saving ? <Loader2Icon className="animate-spin" /> : null}
-          Save
-        </Button>
+          {!loading && !error && tab === "prompt" ? (
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="writer-system">System prompt</Label>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => set("writerSystemPrompt", form.writerSystemDefault)}>
+                    Reset
+                  </Button>
+                </div>
+                <Textarea
+                  id="writer-system"
+                  value={form.writerSystemPrompt}
+                  onChange={(event) => set("writerSystemPrompt", event.target.value)}
+                  className="min-h-56 font-mono text-xs"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="writer-profile">Candidate profile</Label>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => set("writerProfile", form.writerProfileDefault)}>
+                    Reset
+                  </Button>
+                </div>
+                <Textarea
+                  id="writer-profile"
+                  value={form.writerProfile}
+                  onChange={(event) => set("writerProfile", event.target.value)}
+                  className="min-h-40 font-mono text-xs"
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-between gap-3 bg-muted/30 px-6 py-3">
+          <p className="text-xs text-muted-foreground">Passwords stay on this machine.</p>
+          <Button type="submit" disabled={saving || loading || Boolean(error)}>
+            {saving ? <Loader2Icon className="animate-spin" /> : null}
+            Save
+          </Button>
+        </div>
       </div>
+        </SidebarInset>
+      </SidebarProvider>
     </form>
   )
 }

@@ -1,5 +1,13 @@
 import { requireAuth } from "@/lib/guard"
-import { assertSheetsWebhook, loadSettings, saveSettings, toPublic } from "@/lib/settings"
+import {
+  assertSheetsWebhook,
+  defaultWriterProfile,
+  loadSettings,
+  saveSettings,
+  storedPrompt,
+  toPublic,
+} from "@/lib/settings"
+import { writerSystem } from "@/lib/writer"
 import type { Settings } from "@/lib/types"
 
 export const runtime = "nodejs"
@@ -30,6 +38,8 @@ export async function PUT(request: Request) {
     ...body,
     smtpPort: Number.isFinite(port) ? port : undefined,
     imapPort: Number.isFinite(imapPort) ? imapPort : undefined,
+    writerSystemPrompt: storedPrompt(body.writerSystemPrompt, writerSystem()),
+    writerProfile: storedPrompt(body.writerProfile, await defaultWriterProfile()),
   })
   return Response.json({ settings: await toPublic(saved) })
 }

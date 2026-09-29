@@ -399,7 +399,7 @@ export async function updateNotionWriter(
   token: string,
   pageId: string,
   schema: Record<string, unknown>,
-  meta: { workflow: string; subject?: string; body?: string; company?: string }
+  meta: { workflow: string; subject?: string; body?: string; company?: string; role?: string }
 ) {
   const properties = propertiesOf(schema)
   const payload: Record<string, unknown> = {}
@@ -422,6 +422,15 @@ export async function updateNotionWriter(
       throw new Error("Add an AI Body rich text property in Notion.")
     }
     payload[bodyProp.name] = rich(meta.body)
+  }
+  const role = meta.role?.trim()
+  if (role) {
+    const title = properties.find((property) => property.type === "title")
+    if (title) {
+      payload[title.name] = {
+        title: [{ type: "text", text: { content: role.slice(0, 1900) } }],
+      }
+    }
   }
   const company = meta.company?.trim()
   if (company) {

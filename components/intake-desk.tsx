@@ -30,7 +30,7 @@ export function IntakeDesk({
 }) {
   const [url, setUrl] = useState("")
   const [bulk, setBulk] = useState("")
-  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkMode, setBulkMode] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [record, setRecord] = useState<BriefRecord | null>(null)
@@ -90,7 +90,7 @@ export function IntakeDesk({
           description="Paste public LinkedIn job or post links. Each one is filed to Notion and queued for the AI writer."
         />
       )}
-      <Card className="border-border/60 bg-card/40 shadow-none">
+      <Card className="bg-card/40 shadow-none">
         <CardHeader>
           <CardTitle className="text-base font-semibold">Link</CardTitle>
           <CardDescription>One URL, or several — one per line.</CardDescription>

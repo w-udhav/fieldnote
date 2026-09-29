@@ -39,6 +39,7 @@ export function BriefEditor({
   const [settings, setSettings] = useState<PublicSettings | null>(null)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  const [rewriting, setRewriting] = useState(false)
 
   useEffect(() => {
     void api<{ settings: PublicSettings }>("/api/settings")
@@ -66,6 +67,23 @@ export function BriefEditor({
     }
   }
 
+  async function rewrite() {
+    setRewriting(true)
+    try {
+      const data = await api<{ record: BriefRecord }>(`/api/records/${record.id}/rewrite`, {
+        method: "POST",
+        body: "{}",
+      })
+      onChange(data.record)
+      setDraft(data.record.draft)
+      toast.success("Draft rewritten.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not rewrite the draft.")
+    } finally {
+      setRewriting(false)
+    }
+  }
+
   async function send() {
     setSending(true)
     try {
@@ -89,7 +107,7 @@ export function BriefEditor({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-      <Card className="border-border/60 bg-card/40 shadow-none">
+      <Card className="bg-card/40 shadow-none">
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{record.kind === "job" ? "Job" : record.kind === "post" ? "Post" : "Page"}</Badge>
@@ -185,7 +203,7 @@ export function BriefEditor({
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 bg-card/40 shadow-none">
+      <Card className="bg-card/40 shadow-none">
         <CardHeader>
           <CardTitle className="text-lg font-semibold">Mail draft</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -238,15 +256,26 @@ export function BriefEditor({
           ) : null}
         </CardContent>
         <CardFooter className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <Button type="button" variant="outline" onClick={() => void saveDraft()} disabled={saving || sending}>
-            {saving ? <Loader2Icon className="animate-spin" /> : null}
-            Save draft
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void rewrite()}
+              disabled={rewriting || saving || sending || record.status === "sent"}
+            >
+              {rewriting ? <Loader2Icon className="animate-spin" /> : null}
+              Rewrite
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void saveDraft()} disabled={saving || sending || rewriting}>
+              {saving ? <Loader2Icon className="animate-spin" /> : null}
+              Save draft
+            </Button>
+          </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <a className={cn(buttonVariants({ variant: "secondary" }), "h-8")} href={mailto}>
               Open in mail app
             </a>
-            <Button type="button" onClick={() => void send()} disabled={sending || saving || !smtpReady}>
+            <Button type="button" onClick={() => void send()} disabled={sending || saving || rewriting || !smtpReady}>
               {sending ? <Loader2Icon className="animate-spin" /> : null}
               Send mail
             </Button>

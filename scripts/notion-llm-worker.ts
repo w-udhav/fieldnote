@@ -1,27 +1,49 @@
+import { readFile } from "node:fs/promises"
+import path from "node:path"
 import {
   getDatabaseSchema,
   pagePlainText,
   queryBriefs,
   updateNotionWriter,
 } from "../lib/notion"
-import { requestWriterDraft, writerPrompt, writerSystem } from "../lib/writer"
+import { loadSettings, resolveWriterProfile } from "../lib/settings"
+import { requestWriterDraft, resolveWriterSystem, writerPrompt } from "../lib/writer"
 import type { NotionBrief } from "../lib/types"
+
+async function loadEnvFile() {
+  try {
+    const raw = await readFile(path.join(process.cwd(), ".env"), "utf8")
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith("#")) continue
+      const eq = trimmed.indexOf("=")
+      if (eq < 1) continue
+      const key = trimmed.slice(0, eq).trim()
+      let value = trimmed.slice(eq + 1).trim()
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1)
+      }
+      if (process.env[key] === undefined) process.env[key] = value
+    }
+  } catch {
+    // The process environment is already set.
+  }
+}
 
 const sleepMs = Number(process.env.WORKER_INTERVAL_MS || 120000)
 
-function required(name: string) {
-  const value = process.env[name]?.trim()
-  if (!value) throw new Error(`Set ${name} before starting the worker.`)
-  return value
-}
-
-async function writeDraft(brief: NotionBrief, description: string) {
+async function writeDraft(
+  settings: Awaited<ReturnType<typeof loadSettings>>,
+  brief: NotionBrief,
+  description: string
+) {
   return requestWriterDraft({
-    system: writerSystem({
-      name: process.env.SENDER_NAME || "",
-      email: process.env.SENDER_EMAIL || process.env.SMTP_FROM || "",
-    }),
+    system: resolveWriterSystem(settings.writerSystemPrompt),
     user: writerPrompt({
+      profile: await resolveWriterProfile(settings),
       title: brief.title,
       company: brief.company,
       authorName: brief.authorName,
@@ -32,8 +54,12 @@ async function writeDraft(brief: NotionBrief, description: string) {
 }
 
 async function tick() {
-  const token = required("NOTION_TOKEN")
-  const databaseId = required("NOTION_DATABASE_ID")
+  const settings = await loadSettings()
+  const token = settings.notionToken.trim()
+  const databaseId = settings.notionDatabaseId.trim()
+  if (!token || !databaseId) {
+    throw new Error("Set NOTION_TOKEN and NOTION_DATABASE_ID in .env, or save them in Settings.")
+  }
   const { briefs } = await queryBriefs(token, databaseId)
   const queued = briefs
     .filter((brief) => brief.workflow?.toLowerCase() === "queued" && !brief.aiBody?.trim())
@@ -49,12 +75,13 @@ async function tick() {
     try {
       await updateNotionWriter(token, brief.pageId, schema, { workflow: "AI pending" })
       const description = await pagePlainText(token, brief.pageId)
-      const draft = await writeDraft(brief, description)
+      const draft = await writeDraft(settings, brief, description)
       await updateNotionWriter(token, brief.pageId, schema, {
         workflow: "Ready",
         subject: draft.subject,
         body: draft.body,
         company: draft.company,
+        role: draft.role,
       })
       console.log(`Ready: ${draft.subject}${draft.company ? ` (${draft.company})` : ""}`)
     } catch (error) {
@@ -70,6 +97,7 @@ async function tick() {
 }
 
 async function main() {
+  await loadEnvFile()
   console.log("Fieldnote writer started.")
   for (;;) {
     try {

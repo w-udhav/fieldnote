@@ -97,6 +97,8 @@ export type Settings = {
   notionToken: string
   notionDatabaseId: string
   sheetsWebhookUrl: string
+  writerSystemPrompt: string
+  writerProfile: string
 }
 
 export type PublicSettings = {
@@ -118,4 +120,8 @@ export type PublicSettings = {
   sheetsWebhookUrl: string
   sheetsConfigured: boolean
   lockRequired: boolean
+  writerSystemPrompt: string
+  writerProfile: string
+  writerSystemDefault: string
+  writerProfileDefault: string
 }
