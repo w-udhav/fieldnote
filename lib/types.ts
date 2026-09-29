@@ -1,5 +1,7 @@
 export type BriefKind = "job" | "post" | "page"
 
+export type PostKind = "employer" | "recruiter"
+
 export type EmailDraft = {
   to: string
   subject: string
@@ -18,6 +20,7 @@ export type DestinationResult = {
 export type NotionBrief = {
   pageId: string
   recordId: string | null
+  createdAt?: string
   notionUrl: string | null
   title: string
   company: string
@@ -57,6 +60,8 @@ export type BriefRecord = {
   emails: string[]
   phones: string[]
   hashtags: string[]
+  postKind?: PostKind
+  domain?: string
   draft: EmailDraft
   draftEdited: boolean
   sentAt: string | null
@@ -96,6 +101,7 @@ export type Settings = {
   resumePath: string
   notionToken: string
   notionDatabaseId: string
+  notionCompaniesDatabaseId: string
   sheetsWebhookUrl: string
   writerSystemPrompt: string
   writerProfile: string
@@ -116,6 +122,7 @@ export type PublicSettings = {
   resumePath: string
   resumeConfigured: boolean
   notionDatabaseId: string
+  notionCompaniesDatabaseId: string
   notionConfigured: boolean
   sheetsWebhookUrl: string
   sheetsConfigured: boolean

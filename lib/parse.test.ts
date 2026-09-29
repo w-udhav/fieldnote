@@ -3,7 +3,7 @@ import test from "node:test"
 import { IntakeError } from "./errors"
 import { buildDraft } from "./draft"
 import { assertLinkedInUrl } from "./linkedin"
-import { extractEmails, extractPhones, parseLinkedInHtml, roleLines } from "./parse"
+import { extractEmails, extractPhones, extractPostFacts, parseLinkedInHtml, roleLines } from "./parse"
 
 const postHtml = `
 <!doctype html>
@@ -70,6 +70,41 @@ test("rejects a login wall with no post body", () => {
     () => parseLinkedInHtml("<title>Sign in | LinkedIn</title><div class='authwall'></div>", "https://www.linkedin.com/jobs/view/9", "https://www.linkedin.com/jobs/view/9"),
     (error: unknown) => error instanceof IntakeError && error.code === "login_wall"
   )
+})
+
+test("extracts a recruiter blast without calling a model", () => {
+  const description = [
+    "Good Morning LinkedIn",
+    "Urgently Hiring….Hiring",
+    "Codeverse Weenggs Solution LLP is hiring for below position",
+    "Node JS Developer",
+    "Experience : 5+ year",
+    "Share your resume at hr@weenggs.com or call 501-203 5079",
+  ].join("\n")
+  const facts = extractPostFacts({
+    title: "Good Morning LinkedIn",
+    description,
+    authorName: "Ada Stone",
+    kind: "post",
+  })
+  assert.equal(facts.company, "Codeverse Weenggs Solution LLP")
+  assert.equal(facts.role, "Node JS Developer")
+  assert.equal(facts.contactName, "Ada Stone")
+  assert.equal(facts.postKind, "recruiter")
+  assert.equal(facts.domain, "weenggs.com")
+})
+
+test("keeps an employer job and ignores linkedin links as a domain", () => {
+  const facts = extractPostFacts({
+    title: "Staff Engineer",
+    description: "Build the intake pipeline. See https://www.linkedin.com/company/northwind",
+    company: "Northwind",
+    kind: "job",
+  })
+  assert.equal(facts.company, "Northwind")
+  assert.equal(facts.role, "Staff Engineer")
+  assert.equal(facts.postKind, "employer")
+  assert.equal(facts.domain, "")
 })
 
 test("ignores linkedin system emails and keeps a real one", () => {

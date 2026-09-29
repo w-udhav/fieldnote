@@ -1,5 +1,5 @@
 import { IntakeError } from "./errors"
-import type { BriefKind, ParsedBrief } from "./types"
+import type { BriefKind, ParsedBrief, PostKind } from "./types"
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
 const PHONE_RE = /(?:\+\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g
@@ -155,6 +155,100 @@ export function extractHashtags(text: string) {
   return unique([...text.matchAll(HASHTAG_RE)].map((match) => match[0].toLowerCase())).slice(0, 40)
 }
 
+const FREE_MAIL =
+  /^(?:gmail|googlemail|yahoo|hotmail|outlook|live|icloud|proton|protonmail|aol)\./i
+const BLOCKED_HOST =
+  /(^|\.)(linkedin\.com|lnkd\.in|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|wikipedia\.org|google\.com|bing\.com|duckduckgo\.com)$/i
+const RECRUITER_RE =
+  /urgently hiring|share your resume|send your resume|send your cv|interested candidates|hiring for below/i
+
+export type PostFacts = {
+  company: string
+  role: string
+  contactName: string
+  postKind: PostKind
+  domain: string
+}
+
+function cleanLabel(value: string) {
+  return value.replace(/\s+/g, " ").replace(/^[-–—:]+|[-–—:]+$/g, "").trim()
+}
+
+function noisyTitle(title: string) {
+  return /^(good morning|happy |hey |hi |hello |untitled|urgently)/i.test(title) || /linkedin$/i.test(title)
+}
+
+function companyFromText(text: string) {
+  const hiring = text.match(
+    /\b([A-Z][\w&.'’-]{1,40}(?:\s+[A-Z][\w&.'’-]{1,40}){0,6})\s+is hiring\b/
+  )
+  if (hiring?.[1]) {
+    const name = cleanLabel(hiring[1].replace(/^(?:urgently\s+)?hiring\s+/i, ""))
+    if (name && !/^(?:urgently|hiring)\b/i.test(name)) return name
+  }
+  const suffix = text.match(
+    /\b([A-Z][\w&.'’-]{1,40}(?:\s+[A-Z][\w&.'’-]{1,40}){0,6}\s+(?:LLP|LLC|Inc\.?|Ltd\.?|Pvt\.?\s*Ltd\.?|Limited|GmbH))\b/
+  )
+  return suffix?.[1] ? cleanLabel(suffix[1]) : ""
+}
+
+function hostFromUrl(raw: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) return ""
+  try {
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`)
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase()
+    if (!host.includes(".") || BLOCKED_HOST.test(host)) return ""
+    return host
+  } catch {
+    return ""
+  }
+}
+
+export function domainFromPosting(text: string, emails: string[] = []) {
+  for (const email of emails.length ? emails : extractEmails(text)) {
+    const host = email.split("@")[1] ?? ""
+    if (!host || FREE_MAIL.test(host) || BLOCKED_HOST.test(host)) continue
+    return host.toLowerCase()
+  }
+  const urls = text.match(/https?:\/\/[^\s<>"')]+/gi) ?? []
+  for (const url of urls) {
+    const host = hostFromUrl(url.replace(/[.,;:)]+$/g, ""))
+    if (host) return host
+  }
+  return ""
+}
+
+export function extractPostFacts(input: {
+  title?: string
+  description?: string
+  company?: string
+  authorName?: string
+  emails?: string[]
+  kind?: BriefKind
+}): PostFacts {
+  const title = cleanLabel(input.title ?? "")
+  const description = input.description ?? ""
+  const text = `${title}\n${description}`
+  const company = cleanLabel(input.company ?? "") || companyFromText(text)
+  const roles = roleLines(description).filter(
+    (line) => !/urgently|hiring|good morning|experience\b|share your|resume|linkedin/i.test(line)
+  )
+  const role =
+    input.kind === "job" && title && !noisyTitle(title)
+      ? title
+      : roles[0] || (title && !noisyTitle(title) ? title : "")
+  const contact = cleanLabel(input.authorName ?? "")
+  const contactName = /linkedin/i.test(contact) ? "" : contact
+  return {
+    company: company.slice(0, 200),
+    role: role.slice(0, 180),
+    contactName,
+    postKind: RECRUITER_RE.test(text) ? "recruiter" : "employer",
+    domain: domainFromPosting(text, input.emails),
+  }
+}
+
 export function roleLines(text: string) {
   return text
     .split("\n")
@@ -280,11 +374,22 @@ export function parseLinkedInHtml(html: string, finalUrl: string, sourceUrl: str
   if (genericTitle) title = ""
   if (kind === "page" && /\/jobs\//i.test(finalUrl)) kind = "job"
 
+  const facts = extractPostFacts({
+    title,
+    description,
+    company,
+    authorName,
+    emails,
+    kind,
+  })
+  if (!company && facts.company) company = facts.company
+  if (facts.role && noisyTitle(title)) title = facts.role
+
   return {
     sourceUrl,
     finalUrl,
     kind,
-    title: title || "Untitled LinkedIn page",
+    title: title || facts.role || "Untitled LinkedIn page",
     company,
     location,
     employmentType,
@@ -295,5 +400,7 @@ export function parseLinkedInHtml(html: string, finalUrl: string, sourceUrl: str
     emails,
     phones,
     hashtags,
+    postKind: facts.postKind,
+    domain: facts.domain,
   }
 }

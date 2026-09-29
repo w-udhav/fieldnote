@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { ChevronDownIcon, Loader2Icon, MailIcon, SparklesIcon, TimerIcon, CheckCircle2Icon } from "lucide-react"
@@ -9,13 +10,42 @@ import { toast } from "sonner"
 import { api } from "@/lib/client"
 import type { NotionBrief } from "@/lib/types"
 import { PageHeader } from "@/components/page-header"
+import { RefreshMark } from "@/components/refresh-mark"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const FILTERS = ["All", "Queued", "Ready", "Sent"] as const
+const SORTS = [
+  { value: "filed-desc", label: "Newest filed" },
+  { value: "filed-asc", label: "Oldest filed" },
+  { value: "posted-desc", label: "Newest posted" },
+  { value: "role-asc", label: "Role A–Z" },
+  { value: "company-asc", label: "Company A–Z" },
+] as const
+
+type SortValue = (typeof SORTS)[number]["value"]
+
+function timestamp(value?: string | null) {
+  const time = value ? new Date(value).getTime() : 0
+  return Number.isFinite(time) ? time : 0
+}
+
+function jobId(brief: NotionBrief) {
+  return brief.recordId || brief.pageId
+}
+
+function shortJobId(brief: NotionBrief) {
+  return jobId(brief).replace(/-/g, "").slice(0, 8).toUpperCase()
+}
 
 function formatWhen(value: string | null) {
   if (!value) return "—"
@@ -181,37 +211,36 @@ function StatCard({
 }
 
 export function PipelineList() {
-  const [briefs, setBriefs] = useState<NotionBrief[] | null>(null)
-  const [error, setError] = useState("")
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All")
+  const [sort, setSort] = useState<SortValue>("filed-desc")
   const [syncing, setSyncing] = useState(false)
+  const briefsQuery = useQuery({
+    queryKey: ["notion-briefs"],
+    queryFn: async () => {
+      const data = await api<{ briefs: NotionBrief[] }>("/api/notion/briefs")
+      return data.briefs
+    },
+  })
+  const briefs = briefsQuery.data ?? null
+  const error = briefsQuery.error instanceof Error ? briefsQuery.error.message : ""
 
-  const load = useCallback(() => {
-    return api<{ briefs: NotionBrief[] }>("/api/notion/briefs")
-      .then((data) => {
-        setBriefs(data.briefs)
-        setError("")
-      })
-      .catch((caught: unknown) => {
-        const message = caught instanceof Error ? caught.message : "Could not load the dashboard."
-        setError(message)
-        setBriefs([])
-      })
-  }, [])
+  function reload() {
+    return queryClient.invalidateQueries({ queryKey: ["notion-briefs"] })
+  }
 
   useEffect(() => {
-    void load()
-    const onFiled = () => void load()
+    const onFiled = () => void reload()
     window.addEventListener("fieldnote-filed", onFiled)
     return () => window.removeEventListener("fieldnote-filed", onFiled)
-  }, [load])
+  }, [queryClient])
 
   useEffect(() => {
     let cancelled = false
     const timer = window.setTimeout(() => {
       void api<{ updated: number }>("/api/replies/sync", { method: "POST", body: "{}" })
         .then((data) => {
-          if (!cancelled && data.updated > 0) void load()
+          if (!cancelled && data.updated > 0) void reload()
         })
         .catch(() => undefined)
     }, 400)
@@ -219,7 +248,7 @@ export function PipelineList() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [load])
+  }, [queryClient])
 
   const stats = useMemo(() => {
     const list = briefs ?? []
@@ -234,9 +263,19 @@ export function PipelineList() {
 
   const filtered = useMemo(() => {
     if (!briefs) return []
-    if (filter === "All") return briefs
-    return briefs.filter((brief) => brief.workflow?.toLowerCase() === filter.toLowerCase())
-  }, [briefs, filter])
+    const rows =
+      filter === "All"
+        ? [...briefs]
+        : briefs.filter((brief) => brief.workflow?.toLowerCase() === filter.toLowerCase())
+    rows.sort((a, b) => {
+      if (sort === "filed-asc") return timestamp(a.createdAt) - timestamp(b.createdAt)
+      if (sort === "posted-desc") return timestamp(b.publishedAt) - timestamp(a.publishedAt)
+      if (sort === "role-asc") return a.title.localeCompare(b.title)
+      if (sort === "company-asc") return a.company.localeCompare(b.company)
+      return timestamp(b.createdAt) - timestamp(a.createdAt)
+    })
+    return rows
+  }, [briefs, filter, sort])
 
   async function refreshReplies() {
     setSyncing(true)
@@ -245,7 +284,7 @@ export function PipelineList() {
         method: "POST",
         body: JSON.stringify({}),
       })
-      await load()
+      await reload()
       toast.success(data.updated ? `Updated ${data.updated} repl${data.updated === 1 ? "y" : "ies"}.` : "No new replies.")
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : "Reply sync failed.")
@@ -282,28 +321,48 @@ export function PipelineList() {
       </div>
 
       <Card className="bg-card/40 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">Applications</CardTitle>
-          <CardDescription>Filter by workflow. Ready means the mail draft is written.</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-base font-semibold">Applications</CardTitle>
+            <CardDescription>Filter by workflow. Ready means the mail draft is written.</CardDescription>
+          </div>
+          <RefreshMark updatedAt={briefsQuery.dataUpdatedAt} fetching={briefsQuery.isFetching} />
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <Tabs
-            value={filter}
-            onValueChange={(value) => {
-              if (value === "All" || value === "Queued" || value === "Ready" || value === "Sent") setFilter(value)
-            }}
-          >
-            <TabsList>
-              {FILTERS.map((item) => (
-                <TabsTrigger key={item} value={item}>
-                  {item}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Tabs
+              value={filter}
+              onValueChange={(value) => {
+                if (value === "All" || value === "Queued" || value === "Ready" || value === "Sent") setFilter(value)
+              }}
+            >
+              <TabsList>
+                {FILTERS.map((item) => (
+                  <TabsTrigger key={item} value={item}>
+                    {item}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <Select value={sort} onValueChange={(value) => setSort(value as SortValue)}>
+              <SelectTrigger size="sm" aria-label="Sort applications">
+                <span>{SORTS.find((item) => item.value === sort)?.label}</span>
+              </SelectTrigger>
+              <SelectContent align="end">
+                {SORTS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          {briefs === null ? (
-            <p className="text-sm text-muted-foreground">Loading from Notion…</p>
+          {briefs === null && briefsQuery.isFetching ? (
+            <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Loader2Icon className="size-3 animate-spin" />
+              Loading from Notion
+            </p>
           ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -321,6 +380,7 @@ export function PipelineList() {
             <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
+                    <TableHead>Job ID</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Poster</TableHead>
@@ -333,17 +393,16 @@ export function PipelineList() {
                 <TableBody>
                   {filtered.map((brief) => (
                     <TableRow key={brief.pageId}>
+                      <TableCell className="font-mono text-xs text-muted-foreground" title={jobId(brief)}>
+                        {shortJobId(brief)}
+                      </TableCell>
                       <TableCell className="max-w-[280px] font-medium">
-                        {brief.recordId ? (
-                          <Link
-                            className="hover:underline underline-offset-4"
-                            href={`/pipeline/${brief.recordId}`}
-                          >
-                            {brief.title || "Untitled"}
-                          </Link>
-                        ) : (
-                          brief.title || "Untitled"
-                        )}
+                        <Link
+                          className="hover:underline underline-offset-4"
+                          href={`/pipeline/${brief.recordId || brief.pageId}`}
+                        >
+                          {brief.title || "Untitled"}
+                        </Link>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{brief.company || "—"}</TableCell>
                       <TableCell className="text-muted-foreground">{brief.authorName || "—"}</TableCell>
@@ -368,7 +427,7 @@ export function PipelineList() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <RowActions brief={brief} onDone={() => void load()} />
+                        <RowActions brief={brief} onDone={() => void reload()} />
                       </TableCell>
                     </TableRow>
                   ))}

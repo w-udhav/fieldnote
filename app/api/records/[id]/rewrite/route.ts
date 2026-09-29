@@ -1,9 +1,9 @@
 import { requireAuth } from "@/lib/guard"
 import { applyNotionDraft, loadNotionForRecord } from "@/lib/merge-notion"
 import { getDatabaseSchema, pagePlainText, updateNotionWriter } from "@/lib/notion"
-import { loadSettings, resolveWriterProfile } from "@/lib/settings"
+import { draftOutreach } from "@/lib/outreach"
+import { loadSettings } from "@/lib/settings"
 import { getRecord, saveRecord } from "@/lib/store"
-import { requestWriterDraft, resolveWriterSystem, writerPrompt } from "@/lib/writer"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -32,16 +32,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   try {
-    const written = await requestWriterDraft({
-      system: resolveWriterSystem(settings.writerSystemPrompt),
-      user: writerPrompt({
-        profile: await resolveWriterProfile(settings),
-        title: notion?.title || record.title,
-        company: notion?.company || record.company,
-        authorName: notion?.authorName || record.authorName,
-        url: notion?.finalUrl || record.finalUrl,
-        description,
-      }),
+    const written = await draftOutreach({
+      settings,
+      title: notion?.title || record.title,
+      company: notion?.company || record.company,
+      authorName: notion?.authorName || record.authorName,
+      description,
+      kind: record.kind,
     })
 
     if (notion && settings.notionToken && settings.notionDatabaseId) {

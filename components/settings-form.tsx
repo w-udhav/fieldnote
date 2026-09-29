@@ -51,6 +51,7 @@ const EMPTY: FormState = {
   resumePath: "data/resume.pdf",
   resumeConfigured: false,
   notionDatabaseId: "",
+  notionCompaniesDatabaseId: "",
   notionConfigured: false,
   sheetsWebhookUrl: "",
   sheetsConfigured: false,
@@ -134,6 +135,7 @@ export function SettingsForm() {
           imapSecure: form.imapSecure,
           notionToken: form.notionToken,
           notionDatabaseId: form.notionDatabaseId,
+          notionCompaniesDatabaseId: form.notionCompaniesDatabaseId,
           sheetsWebhookUrl: form.sheetsWebhookUrl,
           writerSystemPrompt: form.writerSystemPrompt,
           writerProfile: form.writerProfile,
@@ -336,9 +338,15 @@ export function SettingsForm() {
               <Field id="notion-token" label="Integration token">
                 <Input id="notion-token" className="h-9" type="password" value={form.notionToken} onChange={(event) => set("notionToken", event.target.value)} placeholder={form.notionConfigured ? "Saved. Leave blank to keep it." : "ntn_…"} autoComplete="new-password" />
               </Field>
-              <Field id="notion-db" label="Database ID or URL">
+              <Field id="notion-db" label="Applications database ID or URL">
                 <Input id="notion-db" className="h-9" value={form.notionDatabaseId} onChange={(event) => set("notionDatabaseId", event.target.value)} />
               </Field>
+              <Field id="notion-companies-db" label="Companies database ID or URL">
+                <Input id="notion-companies-db" className="h-9" value={form.notionCompaniesDatabaseId} onChange={(event) => set("notionCompaniesDatabaseId", event.target.value)} />
+              </Field>
+              <p className="text-sm leading-6 text-muted-foreground">
+                One row per company. The writer looks up What they do, Product, Hook, and Source URL before it fills a draft.
+              </p>
               <p className="text-sm leading-6 text-muted-foreground">
                 Create columns replaces the database schema with the Fieldnote columns and removes the previous ones.
               </p>

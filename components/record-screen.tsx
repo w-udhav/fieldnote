@@ -1,11 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Loader2Icon } from "lucide-react"
 import Link from "next/link"
-import { api } from "@/lib/client"
+import { ApiError, api } from "@/lib/client"
 import type { BriefRecord, NotionBrief } from "@/lib/types"
 import { BriefEditor } from "@/components/brief-editor"
 import { PageHeader } from "@/components/page-header"
+import { RefreshMark } from "@/components/refresh-mark"
 import { Button } from "@/components/ui/button"
 
 function BriefCrumb({ current }: { current: string }) {
@@ -25,23 +27,29 @@ function BriefCrumb({ current }: { current: string }) {
 }
 
 export function RecordScreen({ id }: { id: string }) {
-  const [record, setRecord] = useState<BriefRecord | null>(null)
-  const [notion, setNotion] = useState<NotionBrief | null>(null)
-  const [error, setError] = useState("")
-  const [missing, setMissing] = useState(false)
+  const queryClient = useQueryClient()
+  const briefQuery = useQuery({
+    queryKey: ["record", id],
+    queryFn: () => api<{ record: BriefRecord; notion: NotionBrief | null }>(`/api/records/${id}`),
+    retry: (failureCount, error) => failureCount < 1 && !(error instanceof ApiError && error.status === 404),
+  })
+  const record = briefQuery.data?.record ?? null
+  const notion = briefQuery.data?.notion ?? null
+  const missing = briefQuery.error instanceof ApiError && briefQuery.error.status === 404
+  const error =
+    briefQuery.error && !missing
+      ? briefQuery.error instanceof Error
+        ? briefQuery.error.message
+        : "Could not open this brief."
+      : ""
 
-  useEffect(() => {
-    void api<{ record: BriefRecord; notion: NotionBrief | null }>(`/api/records/${id}`)
-      .then((data) => {
-        setRecord(data.record)
-        setNotion(data.notion)
-      })
-      .catch((caught: unknown) => {
-        const message = caught instanceof Error ? caught.message : "Could not open this brief."
-        if (message.includes("not in the pipeline")) setMissing(true)
-        else setError(message)
-      })
-  }, [id])
+  function onChange(next: BriefRecord) {
+    queryClient.setQueryData(["record", id], (current: { record: BriefRecord; notion: NotionBrief | null } | undefined) => ({
+      record: next,
+      notion: current?.notion ?? notion,
+    }))
+    void queryClient.invalidateQueries({ queryKey: ["notion-briefs"] })
+  }
 
   if (missing) {
     return (
@@ -67,7 +75,10 @@ export function RecordScreen({ id }: { id: string }) {
     return (
       <div className="flex flex-col gap-6">
         <BriefCrumb current="Brief" />
-        <p className="text-sm text-muted-foreground">Loading brief…</p>
+        <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Loader2Icon className="size-3 animate-spin" />
+          Loading brief
+        </p>
       </div>
     )
   }
@@ -77,20 +88,27 @@ export function RecordScreen({ id }: { id: string }) {
       <BriefCrumb current={record.title || "Brief"} />
       <PageHeader
         title={record.title || "Brief"}
-        description={[record.company, notion?.workflow ? `Workflow: ${notion.workflow}` : ""]
+        description={[
+          `Job ID: ${record.id.replace(/-/g, "").slice(0, 8).toUpperCase()}`,
+          record.company,
+          notion?.workflow ? `Workflow: ${notion.workflow}` : "",
+        ]
           .filter(Boolean)
           .join(" · ")}
         actions={
-          <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/pipeline" />}>
-            Dashboard
-          </Button>
+          <div className="flex items-center gap-3">
+            <RefreshMark updatedAt={briefQuery.dataUpdatedAt} fetching={briefQuery.isFetching} />
+            <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/pipeline" />}>
+              Dashboard
+            </Button>
+          </div>
         }
       />
       <BriefEditor
         key={`${record.id}:${record.updatedAt}:${notion?.updatedAt ?? ""}`}
         record={record}
         notion={notion}
-        onChange={setRecord}
+        onChange={onChange}
       />
     </div>
   )

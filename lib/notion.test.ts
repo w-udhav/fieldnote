@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { draftFromNotionBrief, notionPageToBrief } from "./notion"
+import { companySchemaPatch, draftFromNotionBrief, notionPageToBrief } from "./notion"
 import type { EmailDraft } from "./types"
 
 const schema = {
@@ -84,4 +84,18 @@ test("draftFromNotionBrief prefers AI copy when Ready", () => {
   assert.equal(draft.subject, "AI subject")
   assert.equal(draft.body, "AI body")
   assert.equal(draft.to, "hire@co.example")
+})
+
+test("company schema adds the research columns and renames the title", () => {
+  const plan = companySchemaPatch([
+    { name: "Name", type: "title" },
+    { name: "Domain", type: "rich_text" },
+  ])
+  assert.equal(plan.renameTitle, "Name")
+  assert.equal("Domain" in plan.create, false)
+  assert.equal("What they do" in plan.create, true)
+  assert.equal("Product" in plan.create, true)
+  assert.equal("Hook" in plan.create, true)
+  assert.equal("Source URL" in plan.create, true)
+  assert.equal("Fetched" in plan.create, true)
 })

@@ -1,5 +1,6 @@
 import { requireAuth } from "@/lib/guard"
 import { applyNotionDraft, loadNotionForRecord } from "@/lib/merge-notion"
+import { ensureLocalRecord } from "@/lib/notion-record"
 import { getRecord, removeRecord, saveRecord } from "@/lib/store"
 import type { EmailDraft } from "@/lib/types"
 
@@ -22,7 +23,7 @@ export async function GET(request: Request, context: Context) {
   const denied = await requireAuth(request)
   if (denied) return denied
   const { id } = await context.params
-  const record = await getRecord(id)
+  const record = await ensureLocalRecord(id)
   if (!record) return Response.json({ error: "That brief is not in the pipeline." }, { status: 404 })
   const notion = await loadNotionForRecord(record)
   const merged = applyNotionDraft(record, notion)

@@ -6,8 +6,8 @@ import {
   queryBriefs,
   updateNotionWriter,
 } from "../lib/notion"
-import { loadSettings, resolveWriterProfile } from "../lib/settings"
-import { requestWriterDraft, resolveWriterSystem, writerPrompt } from "../lib/writer"
+import { draftOutreach } from "../lib/outreach"
+import { loadSettings } from "../lib/settings"
 import type { NotionBrief } from "../lib/types"
 
 async function loadEnvFile() {
@@ -40,16 +40,13 @@ async function writeDraft(
   brief: NotionBrief,
   description: string
 ) {
-  return requestWriterDraft({
-    system: resolveWriterSystem(settings.writerSystemPrompt),
-    user: writerPrompt({
-      profile: await resolveWriterProfile(settings),
-      title: brief.title,
-      company: brief.company,
-      authorName: brief.authorName,
-      url: brief.finalUrl ?? "",
-      description,
-    }),
+  return draftOutreach({
+    settings,
+    title: brief.title,
+    company: brief.company,
+    authorName: brief.authorName,
+    description,
+    kind: brief.kind === "job" || brief.kind === "post" || brief.kind === "page" ? brief.kind : undefined,
   })
 }
 

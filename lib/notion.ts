@@ -122,6 +122,7 @@ export function notionPageToBrief(page: NotionPage, schema: Record<string, unkno
   return {
     pageId: page.id,
     recordId: readByNames(page, properties, ["record id", "recordid"]) || null,
+    createdAt: page.created_time ?? page.last_edited_time ?? new Date().toISOString(),
     notionUrl: page.url ?? null,
     title,
     company: readByNames(page, properties, ["company", "organization", "org"]),
@@ -162,7 +163,7 @@ export async function queryBriefs(token: string, rawDatabaseId: string) {
 
   do {
     const body: Record<string, unknown> = {
-      sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+      sorts: [{ timestamp: "created_time", direction: "descending" }],
       page_size: 100,
     }
     if (cursor) body.start_cursor = cursor
@@ -209,6 +210,17 @@ export async function findBriefByRecordId(token: string, rawDatabaseId: string, 
   const page = result.results?.[0]
   if (!page) return null
   return notionPageToBrief(page, schema)
+}
+
+export async function findBriefByPageId(token: string, rawDatabaseId: string, pageId: string) {
+  const schema = await getDatabaseSchema(token, rawDatabaseId)
+  try {
+    const page = await getNotionPage(token, pageId)
+    if (!page?.id || !page.properties) return null
+    return notionPageToBrief(page, schema)
+  } catch {
+    return null
+  }
 }
 
 export function draftFromNotionBrief(notion: NotionBrief, fallback: EmailDraft): EmailDraft {
@@ -619,5 +631,160 @@ export async function fileNotion(token: string, rawDatabaseId: string, record: B
   return {
     pageId: typeof created.id === "string" ? created.id : undefined,
     url: typeof created.url === "string" ? created.url : undefined,
+  }
+}
+
+export type CompanyProfile = {
+  pageId: string | null
+  name: string
+  domain: string
+  whatTheyDo: string
+  product: string
+  hook: string
+  sourceUrl: string
+  fetchedAt: string
+}
+
+export const COMPANY_NOTION_COLUMNS: Record<string, unknown> = {
+  Domain: { rich_text: {} },
+  "What they do": { rich_text: {} },
+  Product: { rich_text: {} },
+  Hook: { rich_text: {} },
+  "Source URL": { url: {} },
+  Fetched: { date: {} },
+}
+
+export function normalizeCompanyName(name: string) {
+  return name.replace(/\s+/g, " ").trim()
+}
+
+export function companySchemaPatch(existing: { name: string; type: string }[]) {
+  const title = existing.find((property) => property.type === "title")
+  const have = new Set(existing.map((property) => property.name.toLowerCase()))
+  const create: Record<string, unknown> = {}
+  for (const [name, def] of Object.entries(COMPANY_NOTION_COLUMNS)) {
+    if (!have.has(name.toLowerCase())) create[name] = def
+  }
+  return {
+    renameTitle: title && title.name !== "Company" ? title.name : null,
+    create,
+  }
+}
+
+function companyFromPage(page: NotionPage, schema: Record<string, unknown>): CompanyProfile {
+  const properties = propertiesOf(schema)
+  const titleProp = properties.find((property) => property.type === "title")
+  const name = titleProp ? readPropertyValue(page.properties[titleProp.name], "title") : ""
+  return {
+    pageId: page.id,
+    name,
+    domain: readByNames(page, properties, ["domain"]),
+    whatTheyDo: readByNames(page, properties, ["what they do"]),
+    product: readByNames(page, properties, ["product"]),
+    hook: readByNames(page, properties, ["hook"]),
+    sourceUrl:
+      readByNames(page, properties, ["source url"], "url") ||
+      readByNames(page, properties, ["source url"]),
+    fetchedAt: readByNames(page, properties, ["fetched"]),
+  }
+}
+
+function companyProperties(schema: Record<string, unknown>, profile: CompanyProfile) {
+  const properties = propertiesOf(schema)
+  const payload: Record<string, unknown> = {}
+  const title = properties.find((property) => property.type === "title")
+  if (title) {
+    payload[title.name] = {
+      title: [{ type: "text", text: { content: normalizeCompanyName(profile.name).slice(0, 1900) } }],
+    }
+  }
+  const write = (names: string[], value: string, prefer?: string) => {
+    const property = (prefer ? findProperty(properties, names, prefer) : null) ?? findProperty(properties, names)
+    if (!property || property.type === "title") return
+    if (property.type === "rich_text") {
+      payload[property.name] = value ? rich(value) : { rich_text: [] }
+    } else if (property.type === "url") {
+      payload[property.name] = { url: value || null }
+    } else if (property.type === "date") {
+      const date = value.slice(0, 10)
+      payload[property.name] = /^\d{4}-\d{2}-\d{2}$/.test(date) ? { date: { start: date } } : { date: null }
+    }
+  }
+  write(["domain"], profile.domain)
+  write(["what they do"], profile.whatTheyDo)
+  write(["product"], profile.product)
+  write(["hook"], profile.hook)
+  write(["source url"], profile.sourceUrl, "url")
+  write(["fetched"], profile.fetchedAt, "date")
+  return payload
+}
+
+export async function ensureCompanySchema(token: string, rawDatabaseId: string) {
+  const id = resolveDatabaseId(rawDatabaseId)
+  const schema = await getDatabaseSchema(token, rawDatabaseId)
+  const properties = propertiesOf(schema)
+  const plan = companySchemaPatch(properties)
+  const names = new Set(properties.map((property) => property.name.toLowerCase()))
+  const applications = names.has("ai body") || names.has("workflow") || names.has("record id")
+  const patch: Record<string, unknown> = { ...plan.create }
+  if (plan.renameTitle && !applications) patch[plan.renameTitle] = { name: "Company" }
+  if (Object.keys(patch).length === 0) return
+  await notion(token, `/databases/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ properties: patch }),
+  })
+}
+
+export async function findCompany(token: string, rawDatabaseId: string, name: string) {
+  const wanted = normalizeCompanyName(name)
+  if (!wanted) return null
+  const id = resolveDatabaseId(rawDatabaseId)
+  const schema = await getDatabaseSchema(token, rawDatabaseId)
+  const title = propertiesOf(schema).find((property) => property.type === "title")
+  if (!title) return null
+  const result = (await notion(token, `/databases/${id}/query`, {
+    method: "POST",
+    body: JSON.stringify({
+      filter: { property: title.name, title: { contains: wanted.slice(0, 100) } },
+      page_size: 20,
+    }),
+  })) as { results?: NotionPage[] }
+  const page = (result.results ?? []).find((item) => {
+    const profile = companyFromPage(item, schema)
+    return normalizeCompanyName(profile.name).toLowerCase() === wanted.toLowerCase()
+  })
+  return page ? companyFromPage(page, schema) : null
+}
+
+export async function saveCompany(
+  token: string,
+  rawDatabaseId: string,
+  profile: CompanyProfile
+) {
+  const name = normalizeCompanyName(profile.name)
+  if (!name) throw new Error("A company row needs a name.")
+  await ensureCompanySchema(token, rawDatabaseId)
+  const id = resolveDatabaseId(rawDatabaseId)
+  const schema = await getDatabaseSchema(token, rawDatabaseId)
+  const next = { ...profile, name }
+  const properties = companyProperties(schema, next)
+  const pageId = profile.pageId || (await findCompany(token, rawDatabaseId, name))?.pageId
+  if (pageId) {
+    await notion(token, `/pages/${pageId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ properties }),
+    })
+    return { ...next, pageId }
+  }
+  const created = await notion(token, "/pages", {
+    method: "POST",
+    body: JSON.stringify({
+      parent: { database_id: id },
+      properties,
+    }),
+  })
+  return {
+    ...next,
+    pageId: typeof created.id === "string" ? created.id : null,
   }
 }
