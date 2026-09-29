@@ -4,6 +4,7 @@ import {
   companyFactsFromModel,
   firstCompanySite,
   quoteFromPage,
+  readCompanyPage,
   robotsAllows,
   shouldResearch,
 } from "./company-research"
@@ -21,6 +22,44 @@ test("search results skip social sites and unwrap the result link", () => {
     <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.northwind.example%2Fabout">Northwind</a>
   `
   assert.equal(firstCompanySite(html), "https://www.northwind.example/")
+})
+
+test("official-domain resolution ranks a company match above an unrelated first result", () => {
+  const html = `
+    <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdirectory.example%2Fjuspay">Directory</a>
+    <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fjuspay.io%2Fabout">Juspay</a>
+  `
+  assert.equal(firstCompanySite(html, "Juspay"), "https://juspay.io/")
+})
+
+test("company fetching checks the about page even when the homepage is substantial", { concurrency: false }, async () => {
+  const originalFetch = globalThis.fetch
+  const response = (url: string, body: string, type: string) => {
+    const result = new Response(body, { headers: { "content-type": type } })
+    Object.defineProperty(result, "url", { value: url })
+    return result
+  }
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    if (url.endsWith("/robots.txt")) {
+      return response(url, "User-agent: *\nAllow: /", "text/plain")
+    }
+    if (url.endsWith("/about") || url.endsWith("/about-us")) {
+      return response(
+        url,
+        "<h1>About Juspay</h1><p>Juspay builds payment infrastructure.</p>",
+        "text/html"
+      )
+    }
+    return response(url, `<a href="/about">About</a><p>${"Homepage ".repeat(100)}</p>`, "text/html")
+  }
+  try {
+    const page = await readCompanyPage("juspay.io")
+    assert.equal(page?.url, "https://juspay.io/about")
+    assert.match(page?.text ?? "", /builds payment infrastructure/)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test("model facts must be quotes from the fetched page", () => {

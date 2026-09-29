@@ -33,6 +33,7 @@ export function recordFromNotion(notion: NotionBrief, description = ""): BriefRe
     emails: email ? [email] : [],
     phones: [],
     hashtags: [],
+    categories: notion.categories ?? [],
     draft: {
       to: email,
       subject: notion.aiSubject ?? "",

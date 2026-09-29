@@ -24,13 +24,12 @@ export async function POST(request: Request) {
     return Response.json({ error: "The resume must be 5 MB or smaller." }, { status: 400 })
   }
 
-  const settings = await loadSettings()
-  const target = resolveResumePath(settings)
+  const target = path.join(process.cwd(), "data", "Udhav_Resume.pdf")
   await mkdir(path.dirname(target), { recursive: true })
   const bytes = Buffer.from(await file.arrayBuffer())
   await writeFile(target, bytes)
 
-  const relative = path.join("data", "resume.pdf")
+  const relative = path.join("data", "Udhav_Resume.pdf")
   const saved = await saveSettings({ resumePath: relative })
   return Response.json({ settings: await toPublic(saved) })
 }
@@ -51,7 +50,7 @@ export async function GET(request: Request) {
   return new Response(file, {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": 'inline; filename="resume.pdf"',
+      "Content-Disposition": 'inline; filename="Udhav_Resume.pdf"',
     },
   })
 }

@@ -1,4 +1,5 @@
 import type { BriefRecord, EmailDraft, NotionBrief } from "./types"
+import { extractJobCategories } from "./job-categories"
 
 const NOTION_VERSION = "2022-06-28"
 
@@ -104,6 +105,10 @@ function readPropertyValue(raw: unknown, type: string): string {
     return date?.start ?? ""
   }
   if (type === "checkbox") return value.checkbox === true ? "true" : ""
+  if (type === "multi_select") {
+    const selected = value.multi_select as { name?: string }[] | undefined
+    return Array.isArray(selected) ? selected.map((item) => item.name ?? "").filter(Boolean).join(",") : ""
+  }
   return ""
 }
 
@@ -126,6 +131,13 @@ export function notionPageToBrief(page: NotionPage, schema: Record<string, unkno
     notionUrl: page.url ?? null,
     title,
     company: readByNames(page, properties, ["company", "organization", "org"]),
+    categories: (() => {
+      const saved = readByNames(page, properties, ["tags", "categories"], "multi_select")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean) as NonNullable<NotionBrief["categories"]>
+      return saved.length ? saved : extractJobCategories(title)
+    })(),
     authorName: readByNames(page, properties, ["author", "poster", "contact name"]),
     publishedAt:
       readByNames(page, properties, ["published", "posted", "date"]) ||
@@ -153,6 +165,16 @@ export function notionPageToBrief(page: NotionPage, schema: Record<string, unkno
 
 export async function getDatabaseSchema(token: string, rawDatabaseId: string) {
   return notion(token, `/databases/${resolveDatabaseId(rawDatabaseId)}`)
+}
+
+export async function ensureNotionTags(token: string, rawDatabaseId: string) {
+  const schema = await getDatabaseSchema(token, rawDatabaseId)
+  if (findProperty(propertiesOf(schema), ["tags", "categories"], "multi_select")) return schema
+  await notion(token, `/databases/${resolveDatabaseId(rawDatabaseId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ properties: { Tags: { multi_select: { options: [] } } } }),
+  })
+  return getDatabaseSchema(token, rawDatabaseId)
 }
 
 export async function queryBriefs(token: string, rawDatabaseId: string) {
@@ -246,6 +268,7 @@ export function briefProperties(
     | "id"
     | "title"
     | "company"
+    | "categories"
     | "location"
     | "kind"
     | "authorName"
@@ -293,6 +316,12 @@ export function briefProperties(
   assign(findProperty(properties, ["phone", "phone number"], "phone_number") ?? findProperty(properties, ["phone", "phone number"]), record.phones[0] ?? "")
   assign(findProperty(properties, ["url", "link", "source", "linkedin"]), record.finalUrl)
   assign(findProperty(properties, ["company", "organization", "org"]), record.company)
+  const categoriesProp = findProperty(properties, ["tags", "categories"], "multi_select")
+  if (categoriesProp && record.categories?.length) {
+    payload[categoriesProp.name] = {
+      multi_select: record.categories.map((name) => ({ name })),
+    }
+  }
   assign(findProperty(properties, ["location"]), record.location)
   assign(findProperty(properties, ["author", "poster", "contact name"]), record.authorName)
   assign(findProperty(properties, ["kind", "type"]), record.kind)
@@ -411,7 +440,14 @@ export async function updateNotionWriter(
   token: string,
   pageId: string,
   schema: Record<string, unknown>,
-  meta: { workflow: string; subject?: string; body?: string; company?: string; role?: string }
+  meta: {
+    workflow: string
+    subject?: string
+    body?: string
+    company?: string
+    role?: string
+    categories?: BriefRecord["categories"]
+  }
 ) {
   const properties = propertiesOf(schema)
   const payload: Record<string, unknown> = {}
@@ -452,6 +488,12 @@ export async function updateNotionWriter(
       payload[companyProp.name] = {
         title: [{ type: "text", text: { content: company.slice(0, 1900) } }],
       }
+    }
+  }
+  const categoriesProp = findProperty(properties, ["tags", "categories"], "multi_select")
+  if (categoriesProp && meta.categories?.length) {
+    payload[categoriesProp.name] = {
+      multi_select: meta.categories.map((name) => ({ name })),
     }
   }
   if (workflowProp && !payload[workflowProp.name]) {
@@ -533,6 +575,7 @@ const select = (options: string[]) => ({
 
 export const FIELDNOTE_NOTION_COLUMNS: Record<string, unknown> = {
   Company: { rich_text: {} },
+  Tags: { multi_select: { options: [] } },
   Location: { rich_text: {} },
   Author: { rich_text: {} },
   URL: { url: {} },
@@ -607,7 +650,7 @@ export async function checkNotion(token: string, rawDatabaseId: string) {
 
 export async function fileNotion(token: string, rawDatabaseId: string, record: BriefRecord) {
   const id = resolveDatabaseId(rawDatabaseId)
-  const schema = await getDatabaseSchema(token, rawDatabaseId)
+  const schema = await ensureNotionTags(token, rawDatabaseId)
   const preserveWorkflow = Boolean(record.destinations.notion.pageId)
   const properties = briefProperties(schema, record, { preserveWorkflow })
   if (record.destinations.notion.pageId) {

@@ -36,7 +36,7 @@ export async function POST(
   let attachments: { filename: string; path: string }[] | undefined
   try {
     await access(resumePath)
-    attachments = [{ filename: "resume.pdf", path: resumePath }]
+    attachments = [{ filename: "Udhav_Resume.pdf", path: resumePath }]
   } catch {
     attachments = undefined
   }

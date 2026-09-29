@@ -45,3 +45,17 @@ test("company sentence is used only when a source URL exists", () => {
   assert.match(letter.body, /I read that Northwind builds intake software for shippers\./)
   assert.doesNotMatch(letter.body, /urgently hiring/)
 })
+
+test("uses a fixed category cover paragraph instead of generated copy", () => {
+  const letter = renderLetter({
+    contactName: "Ada",
+    company: "Northwind",
+    role: "Python Full Stack Developer",
+    categories: ["Full-stack", "Python"],
+    hook: "",
+    whatTheyDo: "",
+    sourceUrl: "",
+  })
+  assert.match(letter.body, /across a product path end to end/)
+  assert.doesNotMatch(letter.body, /request that makes them wait/)
+})

@@ -94,6 +94,47 @@ test("extracts a recruiter blast without calling a model", () => {
   assert.equal(facts.domain, "weenggs.com")
 })
 
+test("extracts company and role from common hiring headlines case-insensitively", () => {
+  const cases = [
+    ["Juspay is Hiring: Backend Developer!", "Juspay", "Backend Developer"],
+    ["Hiring at Juspay | Backend Developer", "Juspay", "Backend Developer"],
+    ["Backend Developer at Juspay", "Juspay", "Backend Developer"],
+    ["Juspay | Backend Developer", "Juspay", "Backend Developer"],
+  ] as const
+  for (const [title, company, role] of cases) {
+    const facts = extractPostFacts({ title, description: title, kind: "post" })
+    assert.equal(facts.company, company, title)
+    assert.equal(facts.role, role, title)
+  }
+})
+
+test("does not invent a company for a generic hiring headline", () => {
+  const facts = extractPostFacts({
+    title: "We're Hiring | Software Developer",
+    description: "Role: Software Developer",
+    kind: "post",
+  })
+  assert.equal(facts.company, "")
+  assert.equal(facts.role, "Software Developer")
+})
+
+test("parsed briefs carry generic job categories", () => {
+  const brief = parseLinkedInHtml(
+    postHtml.replace(
+      "Senior Java Full Stack Developer",
+      "Python Full Stack Developer with Django and React"
+    ),
+    "https://www.linkedin.com/posts/ada",
+    "https://www.linkedin.com/posts/ada"
+  )
+  assert.deepEqual(brief.categories?.slice(0, 4), [
+    "Full-stack",
+    "Frontend",
+    "Backend",
+    "Python",
+  ])
+})
+
 test("keeps an employer job and ignores linkedin links as a domain", () => {
   const facts = extractPostFacts({
     title: "Staff Engineer",

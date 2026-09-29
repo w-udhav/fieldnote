@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import {
-  getDatabaseSchema,
+  ensureNotionTags,
   pagePlainText,
   queryBriefs,
   updateNotionWriter,
@@ -66,7 +66,7 @@ async function tick() {
     return
   }
 
-  const schema = await getDatabaseSchema(token, databaseId)
+  const schema = await ensureNotionTags(token, databaseId)
   for (const brief of queued) {
     console.log(`Writing ${brief.title || brief.pageId}`)
     try {
@@ -79,6 +79,7 @@ async function tick() {
         body: draft.body,
         company: draft.company,
         role: draft.role,
+        categories: draft.categories,
       })
       console.log(`Ready: ${draft.subject}${draft.company ? ` (${draft.company})` : ""}`)
     } catch (error) {

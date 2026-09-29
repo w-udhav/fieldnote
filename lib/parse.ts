@@ -1,4 +1,5 @@
 import { IntakeError } from "./errors"
+import { extractJobCategories } from "./job-categories"
 import type { BriefKind, ParsedBrief, PostKind } from "./types"
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
@@ -174,22 +175,82 @@ function cleanLabel(value: string) {
   return value.replace(/\s+/g, " ").replace(/^[-–—:]+|[-–—:]+$/g, "").trim()
 }
 
+const JOB_WORDS =
+  /\b(developer|engineer|architect|designer|manager|analyst|consultant|intern|specialist|lead|role|position|opening)\b/i
+
+function cleanCompanyCandidate(value: string) {
+  return cleanLabel(value)
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/[^\p{L}\p{N}).&'’-]+$/u, "")
+    .replace(/^(?:we(?:'re| are)?|our team|join us at)\s+/i, "")
+    .trim()
+}
+
+function validCompanyCandidate(value: string) {
+  if (!value || value.length > 120) return false
+  const words = value.split(/\s+/)
+  if (words.length > 8) return false
+  if (/^(?:we|our|the|company|team|hiring|job|jobs|opening|opportunity)$/i.test(value)) return false
+  return !JOB_WORDS.test(value)
+}
+
 function noisyTitle(title: string) {
   return /^(good morning|happy |hey |hi |hello |untitled|urgently)/i.test(title) || /linkedin$/i.test(title)
 }
 
 function companyFromText(text: string) {
-  const hiring = text.match(
-    /\b([A-Z][\w&.'’-]{1,40}(?:\s+[A-Z][\w&.'’-]{1,40}){0,6})\s+is hiring\b/
-  )
-  if (hiring?.[1]) {
-    const name = cleanLabel(hiring[1].replace(/^(?:urgently\s+)?hiring\s+/i, ""))
-    if (name && !/^(?:urgently|hiring)\b/i.test(name)) return name
+  const lines = text
+    .split(/\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+
+  for (const line of lines) {
+    const patterns = [
+      /^(.+?)\s+is\s+hiring\b/i,
+      /^(?:we(?:'re| are)\s+)?hiring\s+at\s+(.+?)(?=\s*[|:–—-]|$)/i,
+      /^join\s+(.+?)\s+as\s+(?:an?\s+)?/i,
+      /^(?:company|organization|client)\s*:\s*(.+?)(?=\s*[|,;]|$)/i,
+      /^.+?\bat\s+(.+?)(?=\s*[|:–—-]|$)/i,
+    ]
+    for (const pattern of patterns) {
+      const match = line.match(pattern)
+      const name = cleanCompanyCandidate(match?.[1] ?? "")
+      if (validCompanyCandidate(name)) return name
+    }
+
+    const separated = line.split(/\s+[|–—]\s+/)
+    if (separated.length >= 2 && JOB_WORDS.test(separated.slice(1).join(" "))) {
+      const name = cleanCompanyCandidate(separated[0] ?? "")
+      if (validCompanyCandidate(name)) return name
+    }
   }
+
   const suffix = text.match(
     /\b([A-Z][\w&.'’-]{1,40}(?:\s+[A-Z][\w&.'’-]{1,40}){0,6}\s+(?:LLP|LLC|Inc\.?|Ltd\.?|Pvt\.?\s*Ltd\.?|Limited|GmbH))\b/
   )
   return suffix?.[1] ? cleanLabel(suffix[1]) : ""
+}
+
+function roleFromText(title: string, description: string) {
+  const titlePatterns = [
+    /\bis\s+hiring\s*(?:for\s*)?(?:[:|–—-]\s*)?(.+)$/i,
+    /^hiring\s+at\s+.+?\s+[|–—-]\s+(.+)$/i,
+    /^(.+?)\s+at\s+.+$/i,
+    /^.+?\s+[|–—]\s+(.+)$/i,
+  ]
+  for (const pattern of titlePatterns) {
+    const role = cleanLabel(title.match(pattern)?.[1] ?? "")
+      .replace(/^[^\p{L}\p{N}+#.]+/u, "")
+      .replace(/[^\p{L}\p{N}+#.)]+$/u, "")
+      .trim()
+    if (role && JOB_WORDS.test(role) && !/\b(?:we|our)\b/i.test(role)) return role
+  }
+  for (const line of description.split(/\n/)) {
+    const match = line.match(/^\s*(?:[-*•◆🔹📌]\s*)?(?:role|position|opening)\s*:\s*(.+)$/i)
+    const role = cleanLabel(match?.[1] ?? "")
+    if (role && role.length <= 100) return role
+  }
+  return ""
 }
 
 function hostFromUrl(raw: string) {
@@ -234,10 +295,12 @@ export function extractPostFacts(input: {
   const roles = roleLines(description).filter(
     (line) => !/urgently|hiring|good morning|experience\b|share your|resume|linkedin/i.test(line)
   )
+  const explicitRole = roleFromText(title, description)
   const role =
-    input.kind === "job" && title && !noisyTitle(title)
+    explicitRole ||
+    (input.kind === "job" && title && !noisyTitle(title)
       ? title
-      : roles[0] || (title && !noisyTitle(title) ? title : "")
+      : roles[0] || (title && !noisyTitle(title) ? title : ""))
   const contact = cleanLabel(input.authorName ?? "")
   const contactName = /linkedin/i.test(contact) ? "" : contact
   return {
@@ -400,6 +463,7 @@ export function parseLinkedInHtml(html: string, finalUrl: string, sourceUrl: str
     emails,
     phones,
     hashtags,
+    categories: extractJobCategories(`${title}\n${description}`),
     postKind: facts.postKind,
     domain: facts.domain,
   }

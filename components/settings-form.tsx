@@ -48,7 +48,7 @@ const EMPTY: FormState = {
   imapPort: 993,
   imapSecure: true,
   imapConfigured: false,
-  resumePath: "data/resume.pdf",
+  resumePath: "data/Udhav_Resume.pdf",
   resumeConfigured: false,
   notionDatabaseId: "",
   notionCompaniesDatabaseId: "",

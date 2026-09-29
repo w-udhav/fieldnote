@@ -57,8 +57,18 @@ function safeDecode(value: string) {
   }
 }
 
-export function firstCompanySite(html: string) {
+function normalizedWords(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length >= 3 && !/^(?:the|and|pvt|ltd|llp|inc|limited|solutions?|technologies)$/.test(word))
+}
+
+export function companySiteCandidates(html: string, company = "") {
   const hrefs = [...html.matchAll(/href=["']([^"']+)["']/gi)].map((match) => safeDecode(match[1]))
+  const candidates: Array<{ url: string; score: number; order: number }> = []
   for (const href of hrefs) {
     const target = unwrap(href)
     if (!target) continue
@@ -67,12 +77,27 @@ export function firstCompanySite(html: string) {
       if (url.protocol !== "http:" && url.protocol !== "https:") continue
       const host = url.hostname.replace(/^www\./i, "").toLowerCase()
       if (!host.includes(".") || BLOCKED_HOST.test(host)) continue
-      return `${url.protocol}//${url.host}/`
+      const hostKey = host.replace(/[^a-z0-9]/g, "")
+      const words = normalizedWords(company)
+      const companyKey = words.join("")
+      const score =
+        (companyKey && hostKey.includes(companyKey) ? 100 : 0) +
+        words.reduce((total, word) => total + (hostKey.includes(word) ? 20 : 0), 0)
+      const canonical = `${url.protocol}//${url.host}/`
+      if (!candidates.some((item) => item.url === canonical)) {
+        candidates.push({ url: canonical, score, order: candidates.length })
+      }
     } catch {
       continue
     }
   }
-  return ""
+  return candidates
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .map((candidate) => candidate.url)
+}
+
+export function firstCompanySite(html: string, company = "") {
+  return companySiteCandidates(html, company)[0] ?? ""
 }
 
 function unwrap(href: string) {
@@ -132,7 +157,12 @@ async function fetchText(url: string, userAgent: string) {
     signal: AbortSignal.timeout(12000),
   })
   if (!response.ok) return null
-  return response.text()
+  const type = response.headers.get("content-type")?.toLowerCase() ?? ""
+  if (type && !type.includes("text/html") && !type.includes("text/plain")) return null
+  const declared = Number(response.headers.get("content-length") ?? 0)
+  if (declared > 1_500_000) return null
+  const text = await response.text()
+  return text.length <= 1_500_000 ? text : null
 }
 
 async function readRobots(origin: string) {
@@ -144,7 +174,9 @@ async function readRobots(origin: string) {
     })
     if (response.status === 404) return ""
     if (!response.ok) return null
-    return response.text()
+    if (!sameCompanyHost(new URL(response.url).hostname, new URL(origin).hostname)) return null
+    const text = await response.text()
+    return text.length <= 500_000 ? text : null
   } catch {
     return null
   }
@@ -156,9 +188,51 @@ export async function resolveDomain(name: string, known: string) {
   const query = encodeURIComponent(`${name} official website`)
   const html = await fetchText(`https://html.duckduckgo.com/html/?q=${query}`, BROWSER_UA)
   if (!html) return ""
-  const site = firstCompanySite(html)
+  const site = firstCompanySite(html, name)
   if (!site) return ""
   return new URL(site).hostname.replace(/^www\./i, "").toLowerCase()
+}
+
+function sameCompanyHost(actual: string, expected: string) {
+  const clean = (host: string) => host.toLowerCase().replace(/^www\./, "")
+  const a = clean(actual)
+  const e = clean(expected)
+  return a === e || a.endsWith(`.${e}`) || e.endsWith(`.${a}`)
+}
+
+async function fetchCompanyHtml(url: string, userAgent: string, domain: string) {
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": userAgent, Accept: "text/html,text/plain" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!response.ok || !sameCompanyHost(new URL(response.url).hostname, domain)) return null
+    const type = response.headers.get("content-type")?.toLowerCase() ?? ""
+    if (type && !type.includes("text/html") && !type.includes("text/plain")) return null
+    const declared = Number(response.headers.get("content-length") ?? 0)
+    if (declared > 1_500_000) return null
+    const html = await response.text()
+    if (html.length > 1_500_000) return null
+    return { html, url: response.url }
+  } catch {
+    return null
+  }
+}
+
+function aboutPaths(html: string, origin: string) {
+  const paths: string[] = []
+  for (const match of html.matchAll(/href=["']([^"'#]+)["']/gi)) {
+    try {
+      const url = new URL(safeDecode(match[1]), origin)
+      if (url.origin !== origin) continue
+      if (!/^\/(?:about(?:-us)?|company|who-we-are)\/?$/i.test(url.pathname)) continue
+      if (!paths.includes(url.pathname)) paths.push(url.pathname)
+    } catch {
+      continue
+    }
+  }
+  return paths.slice(0, 3)
 }
 
 export async function readCompanyPage(domain: string) {
@@ -167,15 +241,22 @@ export async function readCompanyPage(domain: string) {
   if (robots === null) return null
   const paths = ["/", "/about", "/about-us"]
   let best: { url: string; text: string } | null = null
-  for (const path of paths) {
+  for (let index = 0; index < paths.length; index += 1) {
+    const path = paths[index]
     if (!robotsAllows(robots, path)) continue
     const url = `${origin}${path === "/" ? "/" : path}`
-    let html = await fetchText(url, BOT_UA)
-    if (html === null) html = await fetchText(url, BROWSER_UA)
-    if (!html) continue
-    const text = htmlToText(html).slice(0, 8000)
-    if (!best || text.length > best.text.length) best = { url, text }
-    if (path === "/" && text.length >= 400) break
+    let page = await fetchCompanyHtml(url, BOT_UA, domain)
+    if (page === null) page = await fetchCompanyHtml(url, BROWSER_UA, domain)
+    if (!page) continue
+    if (path === "/") {
+      for (const discovered of aboutPaths(page.html, new URL(page.url).origin)) {
+        if (!paths.includes(discovered)) paths.push(discovered)
+      }
+    }
+    const text = htmlToText(page.html).slice(0, 8000)
+    const score = (path === "/" ? 0 : 10_000) + text.length
+    const bestScore = best ? (new URL(best.url).pathname === "/" ? 0 : 10_000) + best.text.length : -1
+    if (score > bestScore) best = { url: page.url, text }
   }
   return best
 }

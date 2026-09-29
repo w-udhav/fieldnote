@@ -9,6 +9,7 @@ import { ChevronDownIcon, Loader2Icon, MailIcon, SparklesIcon, TimerIcon, CheckC
 import { toast } from "sonner"
 import { api } from "@/lib/client"
 import type { NotionBrief } from "@/lib/types"
+import { CompanyDetailsDialog } from "@/components/company-research-details"
 import { PageHeader } from "@/components/page-header"
 import { RefreshMark } from "@/components/refresh-mark"
 import { Badge } from "@/components/ui/badge"
@@ -70,10 +71,6 @@ function RowActions({ brief, onDone }: { brief: NotionBrief; onDone: () => void 
   const sent = brief.workflow?.toLowerCase() === "sent"
   const ready = brief.workflow?.toLowerCase() === "ready"
 
-  if (!brief.recordId || sent) {
-    return <span className="text-muted-foreground">—</span>
-  }
-
   async function send() {
     setBusy("send")
     try {
@@ -131,6 +128,10 @@ function RowActions({ brief, onDone }: { brief: NotionBrief; onDone: () => void 
       window.removeEventListener("resize", close)
     }
   }, [open])
+
+  if (!brief.recordId || sent) {
+    return <span className="text-muted-foreground">—</span>
+  }
 
   return (
     <div className="flex w-fit justify-end">
@@ -383,6 +384,7 @@ export function PipelineList() {
                     <TableHead>Job ID</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Company</TableHead>
+                    <TableHead>Tags</TableHead>
                     <TableHead>Poster</TableHead>
                     <TableHead>Posted</TableHead>
                     <TableHead>Status</TableHead>
@@ -404,7 +406,22 @@ export function PipelineList() {
                           {brief.title || "Untitled"}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{brief.company || "—"}</TableCell>
+                      <TableCell>
+                        <CompanyDetailsDialog company={brief.company} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex max-w-[220px] flex-wrap gap-1">
+                          {brief.categories?.length ? (
+                            brief.categories.map((category) => (
+                              <Badge key={category} variant="outline" className="text-[10px]">
+                                {category}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{brief.authorName || "—"}</TableCell>
                       <TableCell className="text-muted-foreground">{formatWhen(brief.publishedAt)}</TableCell>
                       <TableCell>

@@ -1,6 +1,6 @@
 import { requireAuth } from "@/lib/guard"
 import { applyNotionDraft, loadNotionForRecord } from "@/lib/merge-notion"
-import { getDatabaseSchema, pagePlainText, updateNotionWriter } from "@/lib/notion"
+import { ensureNotionTags, pagePlainText, updateNotionWriter } from "@/lib/notion"
 import { draftOutreach } from "@/lib/outreach"
 import { loadSettings } from "@/lib/settings"
 import { getRecord, saveRecord } from "@/lib/store"
@@ -42,13 +42,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     })
 
     if (notion && settings.notionToken && settings.notionDatabaseId) {
-      const schema = await getDatabaseSchema(settings.notionToken, settings.notionDatabaseId)
+      const schema = await ensureNotionTags(settings.notionToken, settings.notionDatabaseId)
       await updateNotionWriter(settings.notionToken, notion.pageId, schema, {
         workflow: "Ready",
         subject: written.subject,
         body: written.body,
         company: written.company,
         role: written.role,
+        categories: written.categories,
       })
     }
 
@@ -56,6 +57,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ...record,
       title: written.role || record.title,
       company: written.company || record.company,
+      categories: written.categories,
       draft: {
         to: notion?.draftTo?.trim() || record.draft.to,
         subject: written.subject,

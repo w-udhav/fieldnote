@@ -18,7 +18,7 @@ npm test
 npm run lint
 ```
 
-The local cache is stored in `data/records.json`. Settings, including mail and Notion secrets, are stored in `data/settings.json`. Upload a resume to `data/resume.pdf`. All of these stay on this machine.
+The local cache is stored in `data/records.json`. Settings, including mail and Notion secrets, are stored in `data/settings.json`. Upload a resume to `data/Udhav_Resume.pdf`. All of these stay on this machine.
 
 The **Dashboard** reads from Notion when connected. Intake still writes a local copy so Send and dedupe work offline of Notion reads.
 

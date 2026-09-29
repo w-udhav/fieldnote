@@ -1,3 +1,5 @@
+import type { JobCategory } from "./job-categories"
+
 export const PORTFOLIO_URL = "https://www.udhv.space/"
 
 export type ValueBeat = "wait" | "message" | "screen"
@@ -10,6 +12,37 @@ const VALUE: Record<ValueBeat, string> = {
     "I work on the part of a product a person actually feels: the screen that should show the work, not a spinner.",
 }
 
+const CATEGORY_VALUE: Partial<Record<JobCategory, string>> = {
+  "Full-stack":
+    "I work across a product path end to end, connecting the interface, the service behind it, and the data it depends on so the whole experience remains reliable.",
+  Frontend:
+    "I build interfaces around the work a person is trying to finish, keeping the screen clear, responsive, and dependable.",
+  Backend:
+    "I build backend paths that stay understandable under change and make requests, data, and failures easier to rely on.",
+  Python:
+    "I use Python to turn product requirements into clear services and dependable workflows that are straightforward to operate.",
+  "JavaScript / TypeScript":
+    "I build product flows with JavaScript and TypeScript while keeping the boundaries between the interface and its services clear.",
+  "Node.js":
+    "I build Node.js services around predictable request handling, background work, and integrations that need to keep moving.",
+  Java:
+    "I build service paths with an emphasis on clear boundaries, predictable behavior, and code that remains workable as the product grows.",
+  ".NET":
+    "I build service paths with an emphasis on clear boundaries, predictable behavior, and code that remains workable as the product grows.",
+  PHP:
+    "I build web product paths that connect business rules, data, and the user-facing experience without making the system harder to change.",
+  Mobile:
+    "I focus on mobile experiences that remain responsive and make network, state, and failure handling feel simple to the person using them.",
+  "DevOps / Cloud":
+    "I work on the delivery path around a product so releases, infrastructure, and recovery are dependable instead of surprising.",
+  "Data / AI":
+    "I build data paths that make inputs, processing, and outputs traceable enough for a team to trust and improve.",
+  "QA / Test":
+    "I turn important product paths into repeatable checks so teams can change the product without guessing what they broke.",
+  Security:
+    "I approach product security as part of the path itself, making boundaries and failure modes explicit before they become incidents.",
+}
+
 export function valueBeat(text: string): ValueBeat {
   const value = text.toLowerCase()
   if (/\b(front\s*end|frontend|ui|ux|design|react|css|screen)\b/.test(value)) return "screen"
@@ -17,6 +50,14 @@ export function valueBeat(text: string): ValueBeat {
     return "message"
   }
   return "wait"
+}
+
+export function categoryValue(categories: JobCategory[] = [], text = "") {
+  for (const category of categories) {
+    const value = CATEGORY_VALUE[category]
+    if (value) return value
+  }
+  return VALUE[valueBeat(text)]
 }
 
 function firstName(name: string) {
@@ -52,6 +93,7 @@ export function renderLetter(input: {
   hook: string
   whatTheyDo: string
   sourceUrl: string
+  categories?: JobCategory[]
   senderName?: string
 }) {
   const contact = firstName(input.contactName)
@@ -68,7 +110,7 @@ export function renderLetter(input: {
     greeting,
     "",
     ...(about ? [about, ""] : []),
-    VALUE[valueBeat(`${role}\n${input.whatTheyDo}`)],
+    categoryValue(input.categories, `${role}\n${input.whatTheyDo}`),
     "",
     ask,
     "",

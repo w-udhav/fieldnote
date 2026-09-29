@@ -1,11 +1,11 @@
 import { access } from "node:fs/promises"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { PublicSettings, Settings } from "./types"
 import { resolveWriterSystem, writerSystem } from "./writer"
 
 const FILE = path.join(process.cwd(), "data", "settings.json")
-const DEFAULT_RESUME = path.join("data", "resume.pdf")
+const DEFAULT_RESUME = path.join("data", "Udhav_Resume.pdf")
 
 function fromEnv(): Settings {
   const port = Number(process.env.SMTP_PORT || 587)
@@ -63,14 +63,32 @@ function overlay(base: Settings, patch: Partial<Settings>): Settings {
   return next
 }
 
+async function normalizeResumeName(settings: Settings) {
+  if (path.basename(settings.resumePath).toLowerCase() !== "resume.pdf") return settings
+  const oldPath = path.isAbsolute(settings.resumePath)
+    ? settings.resumePath
+    : path.join(process.cwd(), "data", "resume.pdf")
+  const nextPath = path.join(process.cwd(), DEFAULT_RESUME)
+  try {
+    await access(nextPath)
+  } catch {
+    try {
+      await rename(oldPath, nextPath)
+    } catch {
+      // No existing upload to migrate.
+    }
+  }
+  return { ...settings, resumePath: DEFAULT_RESUME }
+}
+
 export async function loadSettings(): Promise<Settings> {
   const env = fromEnv()
   try {
     const raw = await readFile(FILE, "utf8")
     const saved = JSON.parse(raw) as Partial<Settings>
-    return overlay(env, saved)
+    return normalizeResumeName(overlay(env, saved))
   } catch {
-    return env
+    return normalizeResumeName(env)
   }
 }
 

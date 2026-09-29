@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { cn } from "cn"
 import { ApiError, api } from "@/lib/client"
 import type { BriefRecord, EmailDraft, NotionBrief, PublicSettings } from "@/lib/types"
+import { CompanyResearchDetails } from "@/components/company-research-details"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -117,6 +118,11 @@ export function BriefEditor({
             {notion?.workflow ? (
               <Badge variant="secondary">Workflow: {notion.workflow}</Badge>
             ) : null}
+            {(record.categories ?? notion?.categories ?? []).map((category) => (
+              <Badge key={category} variant="outline">
+                {category}
+              </Badge>
+            ))}
           </div>
           <CardTitle className="text-lg font-semibold leading-tight">{record.title}</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -191,6 +197,7 @@ export function BriefEditor({
               </li>
             </ul>
           </div>
+          <CompanyResearchDetails company={record.company} />
           <div>
             <p className="mb-1 text-sm text-muted-foreground">Page text</p>
             <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/70 p-3 text-sm leading-6">

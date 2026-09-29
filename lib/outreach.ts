@@ -2,6 +2,7 @@ import { researchCompany, shouldResearch } from "./company-research"
 import { renderLetter } from "./letter"
 import { findCompany, saveCompany } from "./notion"
 import { extractPostFacts } from "./parse"
+import { extractJobCategories } from "./job-categories"
 import type { BriefKind, Settings } from "./types"
 
 export async function draftOutreach(input: {
@@ -21,6 +22,7 @@ export async function draftOutreach(input: {
   })
   const company = facts.company || input.company.trim()
   const role = facts.role || (input.title.trim() && !/linkedin|good morning/i.test(input.title) ? input.title.trim() : "")
+  const categories = extractJobCategories(`${role}\n${input.description}`)
   let hook = ""
   let whatTheyDo = ""
   let sourceUrl = ""
@@ -65,7 +67,8 @@ export async function draftOutreach(input: {
     hook,
     whatTheyDo,
     sourceUrl,
+    categories,
     senderName: input.settings.senderName,
   })
-  return { ...letter, company, role }
+  return { ...letter, company, role, categories }
 }

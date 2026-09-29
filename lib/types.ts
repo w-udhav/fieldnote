@@ -1,3 +1,5 @@
+import type { JobCategory } from "./job-categories"
+
 export type BriefKind = "job" | "post" | "page"
 
 export type PostKind = "employer" | "recruiter"
@@ -24,6 +26,7 @@ export type NotionBrief = {
   notionUrl: string | null
   title: string
   company: string
+  categories?: JobCategory[]
   authorName: string
   publishedAt: string | null
   workflow: string | null
@@ -60,6 +63,7 @@ export type BriefRecord = {
   emails: string[]
   phones: string[]
   hashtags: string[]
+  categories?: JobCategory[]
   postKind?: PostKind
   domain?: string
   draft: EmailDraft
